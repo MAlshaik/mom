@@ -18,8 +18,27 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ختم المهدوي",
-  description: "تطبيق إدارة ختمة القرآن الكريم",
+  title: "ختم المهدوي — Khatm Al-Mahdawi",
+  description: "تطبيق إدارة ختمة القرآن الكريم — Quran Khatm Management",
+  metadataBase: new URL("https://qura.vercel.app"),
+  openGraph: {
+    title: "ختم المهدوي — Khatm Al-Mahdawi",
+    description: "تطبيق إدارة ختمة القرآن الكريم — Quran Khatm Management",
+    siteName: "ختم المهدوي",
+    locale: "ar_SA",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ختم المهدوي — Khatm Al-Mahdawi",
+    description: "تطبيق إدارة ختمة القرآن الكريم",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "ختم المهدوي",
+    statusBarStyle: "black-translucent",
+  },
+  themeColor: "#1B3A6B",
 };
 
 export default function RootLayout({

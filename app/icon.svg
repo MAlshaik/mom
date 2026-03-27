@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#1B3A6B"/>
+  <g transform="translate(32,32)">
+    <!-- Center circle -->
+    <circle cx="0" cy="0" r="5" fill="#D4AF37"/>
+    <!-- Petals -->
+    <ellipse cx="0" cy="-12" rx="6" ry="10" fill="#D4AF37" opacity="0.9"/>
+    <ellipse cx="0" cy="-12" rx="6" ry="10" fill="#D4AF37" opacity="0.9" transform="rotate(72)"/>
+    <ellipse cx="0" cy="-12" rx="6" ry="10" fill="#D4AF37" opacity="0.9" transform="rotate(144)"/>
+    <ellipse cx="0" cy="-12" rx="6" ry="10" fill="#D4AF37" opacity="0.9" transform="rotate(216)"/>
+    <ellipse cx="0" cy="-12" rx="6" ry="10" fill="#D4AF37" opacity="0.9" transform="rotate(288)"/>
+    <!-- Inner petals -->
+    <ellipse cx="0" cy="-8" rx="3.5" ry="6" fill="#FFFFFF" opacity="0.3"/>
+    <ellipse cx="0" cy="-8" rx="3.5" ry="6" fill="#FFFFFF" opacity="0.3" transform="rotate(72)"/>
+    <ellipse cx="0" cy="-8" rx="3.5" ry="6" fill="#FFFFFF" opacity="0.3" transform="rotate(144)"/>
+    <ellipse cx="0" cy="-8" rx="3.5" ry="6" fill="#FFFFFF" opacity="0.3" transform="rotate(216)"/>
+    <ellipse cx="0" cy="-8" rx="3.5" ry="6" fill="#FFFFFF" opacity="0.3" transform="rotate(288)"/>
+  </g>
+</svg>
