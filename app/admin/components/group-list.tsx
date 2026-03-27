@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { listGroupsAction, createGroupAction, deleteGroupAction } from "@/server/actions/admin";
 import { Plus, Trash2, Users } from "lucide-react";
-import HijriDatePicker from "@mk01/react-hijri-date-picker";
+import { HijriDatePicker } from "@/components/hijri-date-picker";
 
 interface GroupInfo {
   id: string;
@@ -35,7 +35,7 @@ async function hijriToGregorian(hijriDate: string): Promise<string> {
     // hijriDate is "YYYY-MM-DD" in Hijri
     const [y, m, d] = hijriDate.split("-");
     const res = await fetch(
-      `https://api.aladhan.com/v1/hToG/${d}-${m}-${y}`
+      `https://api.aladhan.com/v1/hToG/${d}-${m}-${y}?timezonestring=Asia/Riyadh`
     );
     const json = await res.json();
     const g = json.data.gregorian;
@@ -115,8 +115,8 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
                 <Label>{locale === "ar" ? "تاريخ البداية (هجري)" : "Start Date (Hijri)"}</Label>
                 <HijriDatePicker
                   value={hijriDate}
-                  onChange={(v: string) => setHijriDate(v)}
-                  placeholder={locale === "ar" ? "اختاري التاريخ" : "Select date"}
+                  onChange={(v) => setHijriDate(v)}
+                  locale={locale}
                 />
               </div>
               <div className="flex gap-2 justify-end">

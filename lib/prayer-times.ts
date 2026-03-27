@@ -37,7 +37,7 @@ async function fetchFromApi(
 ): Promise<PrayerData | null> {
   try {
     const dateStr = formatForApi(date);
-    const url = `https://api.aladhan.com/v1/timingsByCity/${dateStr}?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&method=7`;
+    const url = `https://api.aladhan.com/v1/timingsByCity/${dateStr}?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&method=7&timezonestring=Asia/Riyadh`;
     const res = await fetch(url, { next: { revalidate: 3600 } });
 
     if (!res.ok) return null;
