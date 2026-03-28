@@ -16,6 +16,8 @@ import {
   getTodayCompletionsAction,
   adminMarkDoneAction,
 } from "@/server/actions/admin";
+import { getGoalPageData, toggleGoalCompletionAction } from "@/server/actions/goals";
+import { GoalEntriesAdmin } from "./goal-entries-admin";
 
 export interface MemberInfo {
   id: string;
@@ -34,19 +36,26 @@ export function GroupDetail({ groupId }: GroupDetailProps) {
   const { locale } = useLocale();
   const [members, setMembers] = useState<MemberInfo[]>([]);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
-  const [groupInfo, setGroupInfo] = useState<{ name: string; slug: string; resetType: string; resetValue: string; bannerUrl: string | null } | null>(null);
+  const [groupInfo, setGroupInfo] = useState<{ name: string; slug: string; type: string; resetType: string; resetValue: string; bannerUrl: string | null } | null>(null);
+  const [goalEntries, setGoalEntries] = useState<{ id: string; name: string; completed: boolean; claimedAt: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
-    const [membersData, groupsData, completions] = await Promise.all([
-      getGroupMembersAction(groupId),
-      listGroupsAction(),
-      getTodayCompletionsAction(groupId),
-    ]);
-    setMembers(membersData);
-    setCompletedIds(new Set(completions));
+    const groupsData = await listGroupsAction();
     const g = groupsData.find((g) => g.id === groupId);
-    if (g) setGroupInfo({ name: g.name, slug: g.slug, resetType: g.resetType, resetValue: g.resetValue, bannerUrl: g.bannerUrl ?? null });
+    if (g) setGroupInfo({ name: g.name, slug: g.slug, type: g.type, resetType: g.resetType, resetValue: g.resetValue, bannerUrl: g.bannerUrl ?? null });
+
+    if (g?.type === "goal") {
+      const goalData = await getGoalPageData(groupId);
+      if (goalData) setGoalEntries(goalData.entries);
+    } else {
+      const [membersData, completions] = await Promise.all([
+        getGroupMembersAction(groupId),
+        getTodayCompletionsAction(groupId),
+      ]);
+      setMembers(membersData);
+      setCompletedIds(new Set(completions));
+    }
     setLoading(false);
   }, [groupId]);
 
@@ -116,6 +125,7 @@ export function GroupDetail({ groupId }: GroupDetailProps) {
       {groupInfo && (
         <GroupSettings
           groupId={groupId}
+          groupType={groupInfo.type}
           initialName={groupInfo.name}
           initialResetType={groupInfo.resetType}
           initialResetValue={groupInfo.resetValue}
@@ -125,18 +135,30 @@ export function GroupDetail({ groupId }: GroupDetailProps) {
         />
       )}
 
-      <WhatsAppReport members={members} completedMemberIds={completedIds} />
-      <MemberListReal
-        members={members}
-        groupId={groupId}
-        onAdd={handleAdd}
-        onUpdate={handleUpdate}
-        onRemove={handleRemove}
-        onAddJuz={handleAddJuz}
-        onRemoveJuz={handleRemoveJuz}
-        onMarkDone={handleMarkDone}
-        completedMemberIds={completedIds}
-      />
+      {groupInfo?.type === "goal" ? (
+        <GoalEntriesAdmin
+          entries={goalEntries}
+          onToggle={async (entryId) => {
+            await toggleGoalCompletionAction(entryId);
+            await loadData();
+          }}
+        />
+      ) : (
+        <>
+          <WhatsAppReport members={members} completedMemberIds={completedIds} />
+          <MemberListReal
+            members={members}
+            groupId={groupId}
+            onAdd={handleAdd}
+            onUpdate={handleUpdate}
+            onRemove={handleRemove}
+            onAddJuz={handleAddJuz}
+            onRemoveJuz={handleRemoveJuz}
+            onMarkDone={handleMarkDone}
+            completedMemberIds={completedIds}
+          />
+        </>
+      )}
     </div>
   );
 }

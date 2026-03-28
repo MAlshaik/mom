@@ -24,6 +24,7 @@ const BANNER_HEIGHT = 630;
 
 interface GroupSettingsProps {
   groupId: string;
+  groupType?: string;
   initialName: string;
   initialResetType: string;
   initialResetValue: string;
@@ -34,6 +35,7 @@ interface GroupSettingsProps {
 
 export function GroupSettings({
   groupId,
+  groupType,
   initialName,
   initialResetType,
   initialResetValue,
@@ -164,7 +166,7 @@ export function GroupSettings({
               <Input value={slug} onChange={(e) => setSlug(e.target.value)} dir="ltr" />
             </div>
 
-            <div className="space-y-2">
+            {groupType !== "goal" && <div className="space-y-2">
               <Label>{locale === "ar" ? "وقت التجديد" : "Reset Time"}</Label>
               <div className="flex gap-2">
                 <Button
@@ -205,7 +207,7 @@ export function GroupSettings({
                   dir="ltr"
                 />
               )}
-            </div>
+            </div>}
 
             {error && <div className="text-sm text-destructive">{error}</div>}
 
