@@ -9,23 +9,27 @@ import type { MemberInfo } from "./group-detail";
 
 interface WhatsAppReportProps {
   members: MemberInfo[];
+  completedMemberIds?: Set<string>;
 }
 
-export function WhatsAppReport({ members }: WhatsAppReportProps) {
+export function WhatsAppReport({ members, completedMemberIds }: WhatsAppReportProps) {
   const { locale, t } = useLocale();
   const [copied, setCopied] = useState(false);
 
-  // For now, show all members — completion status will come from real data later
   const lines = members.map((m) => {
-    return `${m.name} ❗`;
+    const done = completedMemberIds?.has(m.id) ?? false;
+    const emoji = done ? "✅" : "❗";
+    return `${m.name} ${emoji}`;
   });
+
+  const doneCount = completedMemberIds?.size ?? 0;
 
   const report = [
     `${locale === "ar" ? "ختم المهدوي" : "Khatm Al-Mahdawi"}`,
     "",
     ...lines,
     "",
-    `${locale === "ar" ? "تم" : "Done"}: 0 / ${members.length}`,
+    `${locale === "ar" ? "تم" : "Done"}: ${doneCount} / ${members.length}`,
   ].join("\n");
 
   const handleCopy = async () => {

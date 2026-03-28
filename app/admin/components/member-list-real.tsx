@@ -14,7 +14,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { generateCode as genCode } from "@/lib/arabic-to-english";
-import { Plus, Trash2, Pencil, Copy, Check, X } from "lucide-react";
+import { Plus, Trash2, Pencil, Copy, Check, X, ChevronDown } from "lucide-react";
+import { getMemberMonthDataAction, adminToggleDayAction } from "@/server/actions/admin";
 import type { MemberInfo } from "./group-detail";
 
 interface MemberListRealProps {
@@ -24,10 +25,15 @@ interface MemberListRealProps {
   onRemove: (memberId: string) => Promise<void>;
   onAddJuz: (memberId: string, juz: number) => Promise<{ success: boolean; error?: string }>;
   onRemoveJuz: (memberId: string, juz: number) => Promise<void>;
+  onMarkDone?: (memberId: string, juzAssignments: number[]) => Promise<void>;
+  completedMemberIds?: Set<string>;
+  groupId: string;
 }
 
-export function MemberListReal({ members, onAdd, onUpdate, onRemove, onAddJuz, onRemoveJuz }: MemberListRealProps) {
-  const { t } = useLocale();
+type MonthDay = { khatmDay: number; hijriDay: number; juzList: { juz: number; startingJuz: number; completed: boolean }[] };
+
+export function MemberListReal({ members, onAdd, onUpdate, onRemove, onAddJuz, onRemoveJuz, onMarkDone, completedMemberIds, groupId }: MemberListRealProps) {
+  const { locale, t } = useLocale();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<MemberInfo | null>(null);
   const [formName, setFormName] = useState("");
@@ -38,6 +44,9 @@ export function MemberListReal({ members, onAdd, onUpdate, onRemove, onAddJuz, o
   const [formCode, setFormCode] = useState("");
   const [addingJuzFor, setAddingJuzFor] = useState<string | null>(null);
   const [newJuz, setNewJuz] = useState("");
+  const [expandedMember, setExpandedMember] = useState<string | null>(null);
+  const [monthData, setMonthData] = useState<MonthDay[] | null>(null);
+  const [monthLoading, setMonthLoading] = useState(false);
 
   const generateCode = (name: string, juz: number) => genCode(name, juz);
 
@@ -224,17 +233,65 @@ export function MemberListReal({ members, onAdd, onUpdate, onRemove, onAddJuz, o
         </Card>
       ) : (
         <div className="space-y-2">
-          {members.map((member) => (
+          {members.map((member) => {
+            const isExpanded = expandedMember === member.id;
+
+            const handleExpand = async () => {
+              if (isExpanded) {
+                setExpandedMember(null);
+                setMonthData(null);
+                return;
+              }
+              setExpandedMember(member.id);
+              setMonthLoading(true);
+              const data = await getMemberMonthDataAction(member.id, groupId);
+              setMonthData(data?.days ?? null);
+              setMonthLoading(false);
+            };
+
+            const handleToggleDay = async (khatmDay: number, startingJuz: number) => {
+              // Optimistic
+              setMonthData((prev) =>
+                prev?.map((d) =>
+                  d.khatmDay === khatmDay
+                    ? { ...d, juzList: d.juzList.map((j) => j.startingJuz === startingJuz ? { ...j, completed: !j.completed } : j) }
+                    : d
+                ) ?? null
+              );
+              await adminToggleDayAction(member.id, khatmDay, startingJuz, groupId);
+            };
+
+            return (
             <Card key={member.id}>
               <CardContent className="py-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-sm">{member.name}</div>
-                    <div className="text-xs text-muted-foreground" dir="ltr">
-                      {member.code}
+                  <div
+                    className="cursor-pointer flex-1"
+                    onClick={handleExpand}
+                  >
+                    <div className="font-medium text-sm flex items-center gap-1">
+                      {member.name}
+                      <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {locale === "ar" ? "الرمز" : "Code"}: <span dir="ltr">{member.code}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {onMarkDone && (
+                      <Button
+                        variant={completedMemberIds?.has(member.id) ? "default" : "outline"}
+                        size="sm"
+                        className={`h-8 px-2 cursor-pointer text-xs ${
+                          completedMemberIds?.has(member.id)
+                            ? "bg-blue-600 text-white hover:bg-blue-700"
+                            : "hover:bg-blue-100 hover:text-blue-700 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
+                        }`}
+                        onClick={() => onMarkDone(member.id, member.juzAssignments)}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -306,9 +363,52 @@ export function MemberListReal({ members, onAdd, onUpdate, onRemove, onAddJuz, o
                     </button>
                   )}
                 </div>
+
+                {/* Expanded month grid */}
+                {isExpanded && (
+                  <div className="pt-2 border-t border-foreground/5">
+                    {monthLoading ? (
+                      <div className="text-xs text-muted-foreground text-center py-3">...</div>
+                    ) : monthData ? (
+                      <div className="grid grid-cols-6 gap-1">
+                        {monthData.map((day) => {
+                          const allDone = day.juzList.every((j) => j.completed);
+                          const someDone = day.juzList.some((j) => j.completed);
+                          return (
+                            <button
+                              key={day.khatmDay}
+                              type="button"
+                              className={`
+                                rounded-md p-1.5 text-center cursor-pointer transition-colors text-xs
+                                ${allDone
+                                  ? "bg-blue-200 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                                  : someDone
+                                    ? "bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400"
+                                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                }
+                              `}
+                              onClick={() => {
+                                // Toggle all juz for this day
+                                for (const j of day.juzList) {
+                                  handleToggleDay(day.khatmDay, j.startingJuz);
+                                }
+                              }}
+                            >
+                              <div className="font-medium">{day.hijriDay}</div>
+                              <div className="text-[9px] leading-tight opacity-70">
+                                {day.juzList.map((j) => j.juz).join(",")}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>

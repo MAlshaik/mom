@@ -4,6 +4,8 @@ import { db } from "@/server/db";
 import { members, groups, dailyEntries, memberJuz } from "@/server/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { generateCode, generateSlug } from "@/lib/arabic-to-english";
+import { getKhatmDay, getJuzForDay, isPastTime, getResetTime } from "@/lib/khatm-day";
+import { getTodayPrayerData, prayerTimesMap } from "@/lib/prayer-times";
 
 export async function listGroupsAction() {
   const allGroups = await db.select().from(groups).orderBy(groups.createdAt);
@@ -283,4 +285,191 @@ export async function removeMemberAction(memberId: string) {
   await db.delete(dailyEntries).where(eq(dailyEntries.memberId, memberId));
   await db.delete(members).where(eq(members.id, memberId));
   return { success: true };
+}
+
+/**
+ * Get which members have completed all their juz for today.
+ */
+export async function getTodayCompletionsAction(groupId: string) {
+  const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!group[0]) return new Set<string>();
+
+  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
+  const prayers = prayerTimesMap(prayer);
+  const resetTimeStr = getResetTime(group[0].resetType, group[0].resetValue, prayers);
+  const pastReset = isPastTime(resetTimeStr);
+  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
+  const khatmDay = getKhatmDay(currentHijriDay, pastReset);
+
+  const [allJuz, todayEntries] = await Promise.all([
+    db.select().from(memberJuz).where(eq(memberJuz.groupId, groupId)),
+    db.select().from(dailyEntries).where(
+      and(
+        eq(dailyEntries.khatmDay, khatmDay),
+        eq(dailyEntries.hijriMonth, prayer.hijriMonth),
+        eq(dailyEntries.hijriYear, prayer.hijriYear)
+      )
+    ),
+  ]);
+
+  // Group juz assignments by member
+  const juzByMember = new Map<string, number[]>();
+  for (const j of allJuz) {
+    const list = juzByMember.get(j.memberId) ?? [];
+    list.push(j.startingJuz);
+    juzByMember.set(j.memberId, list);
+  }
+
+  // Check completions
+  const completedEntries = new Set(
+    todayEntries.filter((e) => e.completed).map((e) => `${e.memberId}:${e.startingJuz}`)
+  );
+
+  const completedMembers: string[] = [];
+  for (const [memberId, juzList] of juzByMember) {
+    const allDone = juzList.every((juz) => completedEntries.has(`${memberId}:${juz}`));
+    if (allDone) completedMembers.push(memberId);
+  }
+
+  return completedMembers;
+}
+
+/**
+ * Admin marks all of a member's juz as done for today.
+ */
+export async function adminMarkDoneAction(memberId: string, juzAssignments: number[], groupId: string) {
+  const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!group[0]) return { success: false };
+
+  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
+  const prayers = prayerTimesMap(prayer);
+  const resetTimeStr = getResetTime(group[0].resetType, group[0].resetValue, prayers);
+  const pastReset = isPastTime(resetTimeStr);
+  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
+  const khatmDay = getKhatmDay(currentHijriDay, pastReset);
+
+  for (const startingJuz of juzAssignments) {
+    const existing = await db.select().from(dailyEntries).where(
+      and(
+        eq(dailyEntries.memberId, memberId),
+        eq(dailyEntries.khatmDay, khatmDay),
+        eq(dailyEntries.startingJuz, startingJuz),
+        eq(dailyEntries.hijriMonth, prayer.hijriMonth),
+        eq(dailyEntries.hijriYear, prayer.hijriYear)
+      )
+    ).limit(1);
+
+    if (existing[0]) {
+      await db.update(dailyEntries).set({
+        completed: !existing[0].completed,
+        markedAt: new Date(),
+      }).where(eq(dailyEntries.id, existing[0].id));
+    } else {
+      await db.insert(dailyEntries).values({
+        memberId,
+        khatmDay,
+        startingJuz,
+        hijriMonth: prayer.hijriMonth,
+        hijriYear: prayer.hijriYear,
+        completed: true,
+      });
+    }
+  }
+
+  return { success: true };
+}
+
+/**
+ * Get a member's month completion grid.
+ */
+export async function getMemberMonthDataAction(memberId: string, groupId: string) {
+  const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!group[0]) return null;
+
+  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
+  const prayers = prayerTimesMap(prayer);
+  const resetTimeStr = getResetTime(group[0].resetType, group[0].resetValue, prayers);
+  const pastReset = isPastTime(resetTimeStr);
+  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
+  const currentKhatmDay = getKhatmDay(currentHijriDay, pastReset);
+
+  const [assignments, entries] = await Promise.all([
+    db.select().from(memberJuz).where(
+      and(eq(memberJuz.memberId, memberId), eq(memberJuz.groupId, groupId))
+    ),
+    db.select().from(dailyEntries).where(
+      and(
+        eq(dailyEntries.memberId, memberId),
+        eq(dailyEntries.hijriMonth, prayer.hijriMonth),
+        eq(dailyEntries.hijriYear, prayer.hijriYear)
+      )
+    ),
+  ]);
+
+  const completionMap = new Map<string, boolean>();
+  for (const e of entries) {
+    completionMap.set(`${e.khatmDay}:${e.startingJuz}`, e.completed);
+  }
+
+  const days: { khatmDay: number; hijriDay: number; juzList: { juz: number; startingJuz: number; completed: boolean }[] }[] = [];
+
+  for (let day = 0; day <= currentKhatmDay; day++) {
+    const juzList = assignments.map((a) => {
+      const juz = getJuzForDay(a.startingJuz, day);
+      const completed = completionMap.get(`${day}:${a.startingJuz}`) ?? false;
+      return { juz, startingJuz: a.startingJuz, completed };
+    }).sort((a, b) => a.juz - b.juz);
+
+    days.push({ khatmDay: day, hijriDay: day + 1, juzList });
+  }
+
+  return {
+    days,
+    hijriMonth: prayer.hijriMonth,
+    hijriYear: prayer.hijriYear,
+    hijriMonthAr: prayer.hijriMonthAr,
+  };
+}
+
+/**
+ * Admin toggles a specific day+juz for a member.
+ */
+export async function adminToggleDayAction(
+  memberId: string,
+  khatmDay: number,
+  startingJuz: number,
+  groupId: string
+) {
+  const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!group[0]) return { success: false };
+
+  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
+
+  const existing = await db.select().from(dailyEntries).where(
+    and(
+      eq(dailyEntries.memberId, memberId),
+      eq(dailyEntries.khatmDay, khatmDay),
+      eq(dailyEntries.startingJuz, startingJuz),
+      eq(dailyEntries.hijriMonth, prayer.hijriMonth),
+      eq(dailyEntries.hijriYear, prayer.hijriYear)
+    )
+  ).limit(1);
+
+  if (existing[0]) {
+    await db.update(dailyEntries).set({
+      completed: !existing[0].completed,
+      markedAt: new Date(),
+    }).where(eq(dailyEntries.id, existing[0].id));
+    return { success: true, completed: !existing[0].completed };
+  } else {
+    await db.insert(dailyEntries).values({
+      memberId,
+      khatmDay,
+      startingJuz,
+      hijriMonth: prayer.hijriMonth,
+      hijriYear: prayer.hijriYear,
+      completed: true,
+    });
+    return { success: true, completed: true };
+  }
 }

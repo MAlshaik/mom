@@ -2,18 +2,13 @@
 
 import { useState, useRef } from "react";
 import { useLocale } from "@/lib/locale-context";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { updateGroupAction } from "@/server/actions/admin";
 import { uploadBannerAction } from "@/server/actions/banner";
-import { Settings, Upload, Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon, ChevronDown } from "lucide-react";
 
 const PRAYER_OPTIONS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 const PRAYER_OPTIONS_AR: Record<string, string> = {
@@ -47,7 +42,7 @@ export function GroupSettings({
   onUpdated,
 }: GroupSettingsProps) {
   const { locale, t } = useLocale();
-  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState(initialName);
   const [slug, setSlug] = useState(initialSlug);
   const [resetType, setResetType] = useState(initialResetType);
@@ -55,6 +50,7 @@ export function GroupSettings({
   const [fixedTime, setFixedTime] = useState(initialResetType === "fixed" ? initialResetValue : "21:30");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [bannerPreview, setBannerPreview] = useState<string | null>(initialBannerUrl ?? null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,7 +61,6 @@ export function GroupSettings({
 
     setUploading(true);
 
-    // Resize to fixed dimensions on a canvas
     const img = new window.Image();
     const url = URL.createObjectURL(file);
     img.src = url;
@@ -76,7 +71,6 @@ export function GroupSettings({
     canvas.height = BANNER_HEIGHT;
     const ctx = canvas.getContext("2d")!;
 
-    // Cover-fit: fill the canvas, crop excess
     const scale = Math.max(BANNER_WIDTH / img.width, BANNER_HEIGHT / img.height);
     const w = img.width * scale;
     const h = img.height * scale;
@@ -99,6 +93,7 @@ export function GroupSettings({
   const handleSave = async () => {
     setSaving(true);
     setError(null);
+    setSaved(false);
 
     const result = await updateGroupAction(groupId, {
       name: name.trim(),
@@ -108,7 +103,8 @@ export function GroupSettings({
     });
 
     if (result.success) {
-      setOpen(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
       onUpdated();
     } else {
       setError(result.error ?? "Error");
@@ -117,22 +113,20 @@ export function GroupSettings({
   };
 
   return (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 w-8 p-0 cursor-pointer"
-        onClick={() => setOpen(true)}
-      >
-        <Settings className="h-4 w-4" />
-      </Button>
+    <Card>
+      <CardContent className="py-3">
+        <button
+          className="flex items-center justify-between w-full cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <span className="text-sm font-medium">
+            {locale === "ar" ? "إعدادات المجموعة" : "Group Settings"}
+          </span>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{locale === "ar" ? "إعدادات المجموعة" : "Group Settings"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto">
+        {expanded && (
+          <div className="space-y-4 pt-4">
             {/* Banner upload */}
             <div className="space-y-2">
               <Label>{locale === "ar" ? "صورة الغلاف" : "Banner"}</Label>
@@ -142,23 +136,13 @@ export function GroupSettings({
                 onClick={() => fileInputRef.current?.click()}
               >
                 {bannerPreview ? (
-                  <img
-                    src={bannerPreview}
-                    alt="Banner"
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={bannerPreview} alt="Banner" className="w-full h-full object-cover" />
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground">
                     <ImageIcon className="h-8 w-8" />
                     <span className="text-xs">
-                      {uploading
-                        ? "..."
-                        : locale === "ar"
-                          ? "اضغطي لرفع صورة"
-                          : "Click to upload"
-                      }
+                      {uploading ? "..." : locale === "ar" ? "اضغطي لرفع صورة" : "Click to upload"}
                     </span>
-                    <span className="text-[10px]">{BANNER_WIDTH}x{BANNER_HEIGHT}</span>
                   </div>
                 )}
                 {uploading && bannerPreview && (
@@ -167,13 +151,7 @@ export function GroupSettings({
                   </div>
                 )}
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleBannerSelect}
-              />
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleBannerSelect} />
             </div>
 
             <div className="space-y-2">
@@ -231,21 +209,16 @@ export function GroupSettings({
 
             {error && <div className="text-sm text-destructive">{error}</div>}
 
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" onClick={() => setOpen(false)} className="cursor-pointer">
-                {t("cancel")}
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                className="bg-[#1B3A6B] text-white hover:bg-[#152E55] dark:bg-[#1E4080] dark:hover:bg-[#16326A] cursor-pointer"
-              >
-                {saving ? "..." : t("save")}
-              </Button>
-            </div>
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full bg-[#1B3A6B] text-white hover:bg-[#152E55] dark:bg-[#1E4080] dark:hover:bg-[#16326A] cursor-pointer"
+            >
+              {saving ? "..." : saved ? (locale === "ar" ? "تم الحفظ" : "Saved") : t("save")}
+            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

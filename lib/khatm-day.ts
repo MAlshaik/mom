@@ -25,9 +25,6 @@ function parseTime(time: string): { hours: number; minutes: number } {
   return { hours: h, minutes: m };
 }
 
-/**
- * Check if current Saudi time is past a given HH:MM time.
- */
 export function isPastTime(timeStr: string): boolean {
   const now = nowInSaudi();
   const { hours, minutes } = parseTime(timeStr);
@@ -36,67 +33,36 @@ export function isPastTime(timeStr: string): boolean {
   return nowMinutes >= targetMinutes;
 }
 
-/**
- * Get the reset time for a group based on its config and today's prayer data.
- */
 export function getResetTime(
   resetType: string,
   resetValue: string,
   prayerTimes: Record<string, string>
 ): string {
   if (resetType === "fixed") {
-    return resetValue; // e.g., "21:30"
+    return resetValue;
   }
-  // Prayer-based: look up the prayer name
   return prayerTimes[resetValue] ?? prayerTimes["Maghrib"] ?? "18:30";
 }
 
 /**
- * Calculate khatm day relative to the group's start day within the month.
- *
- * The group starts on a specific Hijri day (e.g., 9 Shawwal).
- * Each month, the cycle resets on that same day number.
- *
- * Example: startDayInMonth=9, currentHijriDay=9, pastReset=false → khatmDay=0
- * Example: startDayInMonth=9, currentHijriDay=9, pastReset=true  → khatmDay=1
- * Example: startDayInMonth=9, currentHijriDay=10, pastReset=false → khatmDay=1
- * Example: startDayInMonth=9, currentHijriDay=15, pastReset=false → khatmDay=6
- *
- * If current day is before the start day in the month, it means we're still
- * in the previous cycle (wrapping from last month).
+ * khatmDay = hijriDay - 1 (always from 1st of month).
+ * After reset time, advance by 1.
  */
-export function getKhatmDayHijri(
-  currentHijriDay: number,
-  startDayInMonth: number,
-  pastResetTime: boolean
-): number {
-  let day = currentHijriDay - startDayInMonth + (pastResetTime ? 1 : 0);
-  // If negative, we're before the start day this month — wrap from previous month
-  if (day < 0) {
-    day += 30; // approximate, Hijri months are 29-30 days
-  }
-  return Math.max(0, day);
+export function getKhatmDay(currentHijriDay: number, pastResetTime: boolean): number {
+  return Math.max(0, currentHijriDay - 1 + (pastResetTime ? 1 : 0));
 }
 
 /**
- * Calculate which juz a member should read on a given khatm day.
+ * Calculate which juz a member reads on a given khatm day.
+ * On a 29-day month, when the result is 29, they also read 30.
  */
 export function getJuzForDay(startingJuz: number, khatmDay: number): number {
   return ((startingJuz - 1 + khatmDay) % 30) + 1;
 }
 
 /**
- * Get juz label for display — handles 29-day month where last day is "29-30".
+ * Check if a member's juz for a given day is 29 (meaning they also do 30 on 29-day months).
  */
-export function getJuzLabel(
-  startingJuz: number,
-  khatmDay: number,
-  isLastDayOf29DayMonth: boolean
-): string {
-  const juz = getJuzForDay(startingJuz, khatmDay);
-  if (isLastDayOf29DayMonth && khatmDay === 28) {
-    const juz2 = getJuzForDay(startingJuz, 29);
-    return `${juz}-${juz2}`;
-  }
-  return String(juz);
+export function isDoubleJuzDay(startingJuz: number, khatmDay: number): boolean {
+  return getJuzForDay(startingJuz, khatmDay) === 29;
 }

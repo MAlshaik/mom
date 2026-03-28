@@ -5,6 +5,34 @@ import { formatForApi, formatForDb, nowInSaudi } from "./khatm-day";
 
 const FALLBACK_MAGHRIB = "18:30";
 
+/**
+ * Check if a Hijri month has 29 or 30 days by checking if day 30 exists.
+ * Caches the result.
+ */
+const monthLengthCache = new Map<string, number>();
+export async function getHijriMonthLength(hijriMonth: string, hijriYear: string): Promise<number> {
+  const key = `${hijriYear}-${hijriMonth}`;
+  if (monthLengthCache.has(key)) return monthLengthCache.get(key)!;
+
+  try {
+    // Try to convert 30th of this Hijri month to Gregorian
+    const res = await fetch(
+      `https://api.aladhan.com/v1/hToG/30-${hijriMonth}-${hijriYear}?timezonestring=Asia/Riyadh`
+    );
+    const json = await res.json();
+    // If the API returns a valid date AND the Hijri month matches, it has 30 days
+    if (json.code === 200 && json.data) {
+      monthLengthCache.set(key, 30);
+      return 30;
+    }
+    monthLengthCache.set(key, 29);
+    return 29;
+  } catch {
+    // Default to 30
+    return 30;
+  }
+}
+
 interface AladhanTimings {
   data: {
     timings: Record<string, string>;

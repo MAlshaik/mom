@@ -4,13 +4,13 @@ import { db } from "@/server/db";
 import { members, groups, dailyEntries, memberJuz } from "@/server/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { getKhatmDayHijri, getJuzForDay, isPastTime, getResetTime } from "@/lib/khatm-day";
-import { getTodayPrayerData, prayerTimesMap } from "@/lib/prayer-times";
+import { getKhatmDay, getJuzForDay, isDoubleJuzDay, isPastTime, getResetTime } from "@/lib/khatm-day";
+import { getTodayPrayerData, prayerTimesMap, getHijriMonthLength } from "@/lib/prayer-times";
 import { getHijriStartDay } from "@/lib/hijri-start-cache";
 
 export interface SlotData {
   juz: number;
-  startingJuz: number | null; // the member_juz.starting_juz that maps to this juz today
+  startingJuz: number | null;
   memberId: string | null;
   memberName: string | null;
   completed: boolean;
@@ -41,6 +41,7 @@ export interface GroupPageData {
   totalCount: number;
   hijriMonth: string;
   hijriYear: string;
+  is29DayMonth: boolean;
 }
 
 const HIJRI_MONTH_NAMES_EN: Record<string, string> = {
@@ -71,11 +72,12 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
   const resetTimeStr = getResetTime(group.resetType, group.resetValue, prayers);
   const pastReset = isPastTime(resetTimeStr);
   const currentHijriDay = parseInt(prayer.hijriDay) || 1;
-  const khatmDay = getKhatmDayHijri(currentHijriDay, startDayInMonth, pastReset);
+  // khatmDay is always from the 1st of the Hijri month
+  const khatmDay = getKhatmDay(currentHijriDay, pastReset);
   const hijriMonth = prayer.hijriMonth;
   const hijriYear = prayer.hijriYear;
 
-  const [groupMembers, allJuzAssignments, todayEntries, myMonthEntries] = await Promise.all([
+  const [groupMembers, allJuzAssignments, todayEntries, myMonthEntries, monthLength] = await Promise.all([
     db.select().from(members).where(eq(members.groupId, session.groupId)),
     db.select().from(memberJuz).where(eq(memberJuz.groupId, session.groupId)),
     db.select().from(dailyEntries).where(
@@ -84,18 +86,25 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
     db.select().from(dailyEntries).where(
       and(eq(dailyEntries.memberId, session.memberId), eq(dailyEntries.hijriMonth, hijriMonth), eq(dailyEntries.hijriYear, hijriYear))
     ),
+    getHijriMonthLength(hijriMonth, hijriYear),
   ]);
 
+  const is29DayMonth = monthLength === 29;
   const memberMap = new Map(groupMembers.map((m) => [m.id, m]));
 
-  // Build a map: for today, which juz number → which assignment (memberId + startingJuz)
+  // Build juz → assignment map for today
   const juzToAssignment = new Map<number, { memberId: string; startingJuz: number }>();
   for (const a of allJuzAssignments) {
     const juz = getJuzForDay(a.startingJuz, khatmDay);
     juzToAssignment.set(juz, { memberId: a.memberId, startingJuz: a.startingJuz });
+
+    // 29-day month: whoever's rotation lands on juz 29, also takes juz 30
+    if (is29DayMonth && juz === 29) {
+      juzToAssignment.set(30, { memberId: a.memberId, startingJuz: a.startingJuz });
+    }
   }
 
-  // Map: (memberId, startingJuz) → completed?
+  // Completion map: (memberId:startingJuz) → completed
   const entryKey = (memberId: string, startingJuz: number | null) => `${memberId}:${startingJuz}`;
   const completionMap = new Map<string, boolean>();
   for (const e of todayEntries) {
@@ -120,28 +129,45 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
     };
   });
 
-  // My juz for today
+  // My juz for today — include the double juz if applicable
   const myAssignments = allJuzAssignments.filter((a) => a.memberId === member.id);
-  const myJuzSlots = myAssignments.map((a) => {
+  const myJuzSlots: { juz: number; startingJuz: number; completed: boolean }[] = [];
+  for (const a of myAssignments) {
     const juz = getJuzForDay(a.startingJuz, khatmDay);
     const completed = completionMap.get(entryKey(member.id, a.startingJuz)) ?? false;
-    return { juz, startingJuz: a.startingJuz, completed };
-  }).sort((a, b) => a.juz - b.juz);
+    myJuzSlots.push({ juz, startingJuz: a.startingJuz, completed });
+
+    // If this assignment lands on 29 in a 29-day month, show 30 too
+    if (is29DayMonth && juz === 29) {
+      myJuzSlots.push({ juz: 30, startingJuz: a.startingJuz, completed });
+    }
+  }
+  myJuzSlots.sort((a, b) => a.juz - b.juz);
 
   const allMyJuzCompleted = myJuzSlots.length > 0 && myJuzSlots.every((s) => s.completed);
 
-  // Missed days — per-juz tracking
+  // Missed days — only from group start day onward
+  // startDayInMonth is the Hijri day the group started (e.g., 9 for Shawwal 9)
+  const firstKhatmDay = startDayInMonth - 1; // 0-indexed day the group started
   const myMonthCompletionMap = new Map<string, boolean>();
   for (const e of myMonthEntries) {
     myMonthCompletionMap.set(`${e.khatmDay}:${e.startingJuz}`, e.completed);
   }
 
   const missedDays: { khatmDay: number; juzList: { juz: number; startingJuz: number }[] }[] = [];
-  for (let day = khatmDay - 1; day >= 0; day--) {
-    const incomplete = myAssignments
-      .map((a) => ({ juz: getJuzForDay(a.startingJuz, day), startingJuz: a.startingJuz }))
-      .filter((j) => !(myMonthCompletionMap.get(`${day}:${j.startingJuz}`) ?? false));
-
+  for (let day = khatmDay - 1; day >= firstKhatmDay; day--) {
+    const incomplete: { juz: number; startingJuz: number }[] = [];
+    for (const a of myAssignments) {
+      const juz = getJuzForDay(a.startingJuz, day);
+      const done = myMonthCompletionMap.get(`${day}:${a.startingJuz}`) ?? false;
+      if (!done) {
+        incomplete.push({ juz, startingJuz: a.startingJuz });
+        // Also check the 30 if it was a double day
+        if (is29DayMonth && juz === 29) {
+          incomplete.push({ juz: 30, startingJuz: a.startingJuz });
+        }
+      }
+    }
     if (incomplete.length > 0) {
       missedDays.push({ khatmDay: day, juzList: incomplete });
     }
@@ -175,5 +201,6 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
     totalCount: 30,
     hijriMonth,
     hijriYear,
+    is29DayMonth,
   };
 }

@@ -13,6 +13,8 @@ import {
   updateMemberAction,
   removeMemberAction,
   listGroupsAction,
+  getTodayCompletionsAction,
+  adminMarkDoneAction,
 } from "@/server/actions/admin";
 
 export interface MemberInfo {
@@ -31,15 +33,18 @@ interface GroupDetailProps {
 export function GroupDetail({ groupId }: GroupDetailProps) {
   const { locale } = useLocale();
   const [members, setMembers] = useState<MemberInfo[]>([]);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [groupInfo, setGroupInfo] = useState<{ name: string; slug: string; resetType: string; resetValue: string; bannerUrl: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
-    const [membersData, groupsData] = await Promise.all([
+    const [membersData, groupsData, completions] = await Promise.all([
       getGroupMembersAction(groupId),
       listGroupsAction(),
+      getTodayCompletionsAction(groupId),
     ]);
     setMembers(membersData);
+    setCompletedIds(new Set(completions));
     const g = groupsData.find((g) => g.id === groupId);
     if (g) setGroupInfo({ name: g.name, slug: g.slug, resetType: g.resetType, resetValue: g.resetValue, bannerUrl: g.bannerUrl ?? null });
     setLoading(false);
@@ -86,33 +91,51 @@ export function GroupDetail({ groupId }: GroupDetailProps) {
     await loadData();
   };
 
+  const handleMarkDone = async (memberId: string, juzAssignments: number[]) => {
+    // Optimistic toggle
+    setCompletedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) {
+        next.delete(memberId);
+      } else {
+        next.add(memberId);
+      }
+      return next;
+    });
+
+    await adminMarkDoneAction(memberId, juzAssignments, groupId);
+    // Reload to get accurate state
+    const completions = await getTodayCompletionsAction(groupId);
+    setCompletedIds(new Set(completions));
+  };
+
   if (loading) return <div className="text-center text-muted-foreground text-sm py-8">...</div>;
 
   return (
     <div className="space-y-6">
       {groupInfo && (
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">{groupInfo.name}</h2>
-          <GroupSettings
-            groupId={groupId}
-            initialName={groupInfo.name}
-            initialResetType={groupInfo.resetType}
-            initialResetValue={groupInfo.resetValue}
-            initialSlug={groupInfo.slug}
-            initialBannerUrl={groupInfo.bannerUrl}
-            onUpdated={loadData}
-          />
-        </div>
+        <GroupSettings
+          groupId={groupId}
+          initialName={groupInfo.name}
+          initialResetType={groupInfo.resetType}
+          initialResetValue={groupInfo.resetValue}
+          initialSlug={groupInfo.slug}
+          initialBannerUrl={groupInfo.bannerUrl}
+          onUpdated={loadData}
+        />
       )}
 
-      <WhatsAppReport members={members} />
+      <WhatsAppReport members={members} completedMemberIds={completedIds} />
       <MemberListReal
         members={members}
+        groupId={groupId}
         onAdd={handleAdd}
         onUpdate={handleUpdate}
         onRemove={handleRemove}
         onAddJuz={handleAddJuz}
         onRemoveJuz={handleRemoveJuz}
+        onMarkDone={handleMarkDone}
+        completedMemberIds={completedIds}
       />
     </div>
   );

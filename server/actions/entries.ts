@@ -4,9 +4,8 @@ import { db } from "@/server/db";
 import { dailyEntries, members, groups, memberJuz } from "@/server/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { requireSession, requireAdmin } from "@/lib/auth";
-import { getKhatmDayHijri, isPastTime, getResetTime } from "@/lib/khatm-day";
+import { getKhatmDay, isPastTime, getResetTime } from "@/lib/khatm-day";
 import { getTodayPrayerData, prayerTimesMap } from "@/lib/prayer-times";
-import { getHijriStartDay } from "@/lib/hijri-start-cache";
 
 async function getGroupContext(groupId: string) {
   const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
@@ -18,8 +17,7 @@ async function getGroupContext(groupId: string) {
   const pastReset = isPastTime(resetTimeStr);
 
   const currentHijriDay = parseInt(prayer.hijriDay) || 1;
-  const startDayInMonth = await getHijriStartDay(group[0].startDate);
-  const khatmDay = getKhatmDayHijri(currentHijriDay, startDayInMonth, pastReset);
+  const khatmDay = getKhatmDay(currentHijriDay, pastReset);
 
   return {
     group: group[0],
