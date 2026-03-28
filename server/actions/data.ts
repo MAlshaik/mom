@@ -146,16 +146,14 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
 
   const allMyJuzCompleted = myJuzSlots.length > 0 && myJuzSlots.every((s) => s.completed);
 
-  // Missed days — only from group start day onward
-  // startDayInMonth is the Hijri day the group started (e.g., 9 for Shawwal 9)
-  const firstKhatmDay = startDayInMonth - 1; // 0-indexed day the group started
+  // Missed days — from day 0 (1st of Hijri month) to yesterday
   const myMonthCompletionMap = new Map<string, boolean>();
   for (const e of myMonthEntries) {
     myMonthCompletionMap.set(`${e.khatmDay}:${e.startingJuz}`, e.completed);
   }
 
   const missedDays: { khatmDay: number; juzList: { juz: number; startingJuz: number }[] }[] = [];
-  for (let day = khatmDay - 1; day >= firstKhatmDay; day--) {
+  for (let day = khatmDay - 1; day >= 0; day--) {
     const incomplete: { juz: number; startingJuz: number }[] = [];
     for (const a of myAssignments) {
       const juz = getJuzForDay(a.startingJuz, day);
