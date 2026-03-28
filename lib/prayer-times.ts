@@ -7,7 +7,7 @@ const FALLBACK_MAGHRIB = "18:30";
 
 interface AladhanTimings {
   data: {
-    timings: { Maghrib: string };
+    timings: Record<string, string>;
     date: {
       hijri: {
         day: string;
@@ -18,8 +18,12 @@ interface AladhanTimings {
   };
 }
 
-interface PrayerData {
+export interface PrayerData {
   maghribTime: string;
+  fajrTime: string;
+  dhuhrTime: string;
+  asrTime: string;
+  ishaTime: string;
   hijriDay: string;
   hijriMonth: string;
   hijriYear: string;
@@ -27,9 +31,18 @@ interface PrayerData {
 }
 
 /**
- * Fetch prayer times from aladhan.com for a given city/country.
- * Uses method=7 (Jafari / University of Tehran) for Shia times.
+ * Get a map of prayer name → time for use with getResetTime.
  */
+export function prayerTimesMap(data: PrayerData): Record<string, string> {
+  return {
+    Fajr: data.fajrTime,
+    Dhuhr: data.dhuhrTime,
+    Asr: data.asrTime,
+    Maghrib: data.maghribTime,
+    Isha: data.ishaTime,
+  };
+}
+
 async function fetchFromApi(
   date: Date,
   city: string,
@@ -43,13 +56,18 @@ async function fetchFromApi(
     if (!res.ok) return null;
 
     const json: AladhanTimings = await res.json();
-    const maghribRaw = json.data.timings.Maghrib;
-    // API sometimes returns "HH:MM (TZ)", strip the timezone part
-    const maghribTime = maghribRaw.split(" ")[0];
+    const timings = json.data.timings;
     const hijri = json.data.date.hijri;
 
+    // Strip timezone suffixes like " (AST)"
+    const clean = (t: string) => t.split(" ")[0];
+
     return {
-      maghribTime,
+      maghribTime: clean(timings.Maghrib),
+      fajrTime: clean(timings.Fajr),
+      dhuhrTime: clean(timings.Dhuhr),
+      asrTime: clean(timings.Asr),
+      ishaTime: clean(timings.Isha),
       hijriDay: hijri.day,
       hijriMonth: String(hijri.month.number),
       hijriYear: hijri.year,
@@ -60,9 +78,6 @@ async function fetchFromApi(
   }
 }
 
-/**
- * Get today's prayer data, using DB cache first, then API, then fallback.
- */
 export async function getTodayPrayerData(
   city: string,
   country: string
@@ -81,6 +96,10 @@ export async function getTodayPrayerData(
     const c = cached[0];
     return {
       maghribTime: c.maghribTime,
+      fajrTime: c.fajrTime ?? FALLBACK_MAGHRIB,
+      dhuhrTime: c.dhuhrTime ?? "12:00",
+      asrTime: c.asrTime ?? "15:30",
+      ishaTime: c.ishaTime ?? "19:30",
       hijriDay: c.hijriDay,
       hijriMonth: c.hijriMonth,
       hijriYear: c.hijriYear,
@@ -92,12 +111,19 @@ export async function getTodayPrayerData(
   const data = await fetchFromApi(now, city, country);
 
   if (data) {
-    // Cache it
     await db
       .insert(maghribCache)
       .values({
         gregorianDate: todayDb,
-        ...data,
+        maghribTime: data.maghribTime,
+        fajrTime: data.fajrTime,
+        dhuhrTime: data.dhuhrTime,
+        asrTime: data.asrTime,
+        ishaTime: data.ishaTime,
+        hijriDay: data.hijriDay,
+        hijriMonth: data.hijriMonth,
+        hijriYear: data.hijriYear,
+        hijriMonthAr: data.hijriMonthAr,
       })
       .onConflictDoNothing();
 
@@ -107,6 +133,10 @@ export async function getTodayPrayerData(
   // Fallback
   return {
     maghribTime: FALLBACK_MAGHRIB,
+    fajrTime: "05:00",
+    dhuhrTime: "12:00",
+    asrTime: "15:30",
+    ishaTime: "19:30",
     hijriDay: "—",
     hijriMonth: "—",
     hijriYear: "—",

@@ -1,14 +1,16 @@
 "use server";
 
 import { db } from "@/server/db";
-import { members, groups, dailyEntries } from "@/server/db/schema";
+import { members, groups, dailyEntries, memberJuz } from "@/server/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { getKhatmDay, getJuzForDay, formatForDb, nowInSaudi } from "@/lib/khatm-day";
-import { getTodayPrayerData } from "@/lib/prayer-times";
+import { getKhatmDayHijri, getJuzForDay, isPastTime, getResetTime } from "@/lib/khatm-day";
+import { getTodayPrayerData, prayerTimesMap } from "@/lib/prayer-times";
+import { getHijriStartDay } from "@/lib/hijri-start-cache";
 
 export interface SlotData {
   juz: number;
+  startingJuz: number | null; // the member_juz.starting_juz that maps to this juz today
   memberId: string | null;
   memberName: string | null;
   completed: boolean;
@@ -23,186 +25,155 @@ export interface GroupPageData {
     isAdmin: boolean;
   };
   khatmDay: number;
-  myJuz: number;
-  isTodayCompleted: boolean;
+  myJuzSlots: { juz: number; startingJuz: number; completed: boolean }[];
+  allMyJuzCompleted: boolean;
   slots: SlotData[];
-  missedDays: { khatmDay: number; juz: number }[];
+  missedDays: { khatmDay: number; juzList: { juz: number; startingJuz: number }[] }[];
   hijriDate: {
     day: string;
     month: string;
     year: string;
     monthEn: string;
   };
-  maghribTime: string;
+  resetTime: string;
+  resetLabel: string;
   doneCount: number;
   totalCount: number;
+  hijriMonth: string;
+  hijriYear: string;
 }
+
+const HIJRI_MONTH_NAMES_EN: Record<string, string> = {
+  "1": "Muharram", "2": "Safar", "3": "Rabi al-Awwal", "4": "Rabi al-Thani",
+  "5": "Jumada al-Ula", "6": "Jumada al-Thani", "7": "Rajab", "8": "Shaban",
+  "9": "Ramadan", "10": "Shawwal", "11": "Dhul Qadah", "12": "Dhul Hijjah",
+};
 
 export async function getGroupPageData(): Promise<GroupPageData | null> {
   const session = await getSession();
   if (!session) return null;
 
-  const member = await db
-    .select()
-    .from(members)
-    .where(eq(members.id, session.memberId))
-    .limit(1);
+  const [memberResult, groupResult] = await Promise.all([
+    db.select().from(members).where(eq(members.id, session.memberId)).limit(1),
+    db.select().from(groups).where(eq(groups.id, session.groupId)).limit(1),
+  ]);
 
-  if (!member[0]) return null;
+  if (!memberResult[0] || !groupResult[0]) return null;
+  const member = memberResult[0];
+  const group = groupResult[0];
 
-  const group = await db
-    .select()
-    .from(groups)
-    .where(eq(groups.id, session.groupId))
-    .limit(1);
+  const [prayer, startDayInMonth] = await Promise.all([
+    getTodayPrayerData(group.city, group.country),
+    getHijriStartDay(group.startDate),
+  ]);
 
-  if (!group[0]) return null;
+  const prayers = prayerTimesMap(prayer);
+  const resetTimeStr = getResetTime(group.resetType, group.resetValue, prayers);
+  const pastReset = isPastTime(resetTimeStr);
+  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
+  const khatmDay = getKhatmDayHijri(currentHijriDay, startDayInMonth, pastReset);
+  const hijriMonth = prayer.hijriMonth;
+  const hijriYear = prayer.hijriYear;
 
-  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
-  const todayStr = formatForDb(nowInSaudi());
-  const khatmDay = getKhatmDay(group[0].startDate, todayStr, prayer.maghribTime);
+  const [groupMembers, allJuzAssignments, todayEntries, myMonthEntries] = await Promise.all([
+    db.select().from(members).where(eq(members.groupId, session.groupId)),
+    db.select().from(memberJuz).where(eq(memberJuz.groupId, session.groupId)),
+    db.select().from(dailyEntries).where(
+      and(eq(dailyEntries.khatmDay, khatmDay), eq(dailyEntries.hijriMonth, hijriMonth), eq(dailyEntries.hijriYear, hijriYear))
+    ),
+    db.select().from(dailyEntries).where(
+      and(eq(dailyEntries.memberId, session.memberId), eq(dailyEntries.hijriMonth, hijriMonth), eq(dailyEntries.hijriYear, hijriYear))
+    ),
+  ]);
 
-  // Get all members in the group
-  const groupMembers = await db
-    .select()
-    .from(members)
-    .where(eq(members.groupId, session.groupId));
+  const memberMap = new Map(groupMembers.map((m) => [m.id, m]));
 
-  // Get all entries for today
-  const todayEntries = await db
-    .select()
-    .from(dailyEntries)
-    .where(eq(dailyEntries.khatmDay, khatmDay));
-
-  const entryMap = new Map(todayEntries.map((e) => [e.memberId, e]));
-
-  // Build 30 juz slots
-  const juzToMember = new Map<number, (typeof groupMembers)[0]>();
-  for (const m of groupMembers) {
-    const juz = getJuzForDay(m.startingJuz, khatmDay);
-    juzToMember.set(juz, m);
+  // Build a map: for today, which juz number → which assignment (memberId + startingJuz)
+  const juzToAssignment = new Map<number, { memberId: string; startingJuz: number }>();
+  for (const a of allJuzAssignments) {
+    const juz = getJuzForDay(a.startingJuz, khatmDay);
+    juzToAssignment.set(juz, { memberId: a.memberId, startingJuz: a.startingJuz });
   }
 
+  // Map: (memberId, startingJuz) → completed?
+  const entryKey = (memberId: string, startingJuz: number | null) => `${memberId}:${startingJuz}`;
+  const completionMap = new Map<string, boolean>();
+  for (const e of todayEntries) {
+    completionMap.set(entryKey(e.memberId, e.startingJuz), e.completed);
+  }
+
+  // Build 30 slots
   const slots: SlotData[] = Array.from({ length: 30 }, (_, i) => {
     const juz = i + 1;
-    const m = juzToMember.get(juz) ?? null;
-    const entry = m ? entryMap.get(m.id) : null;
+    const assignment = juzToAssignment.get(juz);
+    const m = assignment ? memberMap.get(assignment.memberId) : null;
+    const completed = assignment
+      ? (completionMap.get(entryKey(assignment.memberId, assignment.startingJuz)) ?? false)
+      : false;
+
     return {
       juz,
+      startingJuz: assignment?.startingJuz ?? null,
       memberId: m?.id ?? null,
       memberName: m?.name ?? null,
-      completed: entry?.completed ?? false,
+      completed,
     };
   });
 
-  const myJuz = getJuzForDay(member[0].startingJuz, khatmDay);
-  const myEntry = entryMap.get(member[0].id);
-  const isTodayCompleted = myEntry?.completed ?? false;
+  // My juz for today
+  const myAssignments = allJuzAssignments.filter((a) => a.memberId === member.id);
+  const myJuzSlots = myAssignments.map((a) => {
+    const juz = getJuzForDay(a.startingJuz, khatmDay);
+    const completed = completionMap.get(entryKey(member.id, a.startingJuz)) ?? false;
+    return { juz, startingJuz: a.startingJuz, completed };
+  }).sort((a, b) => a.juz - b.juz);
 
-  // Missed days — check all past days back to start
-  const missedDays: { khatmDay: number; juz: number }[] = [];
+  const allMyJuzCompleted = myJuzSlots.length > 0 && myJuzSlots.every((s) => s.completed);
+
+  // Missed days — per-juz tracking
+  const myMonthCompletionMap = new Map<string, boolean>();
+  for (const e of myMonthEntries) {
+    myMonthCompletionMap.set(`${e.khatmDay}:${e.startingJuz}`, e.completed);
+  }
+
+  const missedDays: { khatmDay: number; juzList: { juz: number; startingJuz: number }[] }[] = [];
   for (let day = khatmDay - 1; day >= 0; day--) {
-    const entry = await db
-      .select()
-      .from(dailyEntries)
-      .where(
-        and(
-          eq(dailyEntries.memberId, session.memberId),
-          eq(dailyEntries.khatmDay, day)
-        )
-      )
-      .limit(1);
+    const incomplete = myAssignments
+      .map((a) => ({ juz: getJuzForDay(a.startingJuz, day), startingJuz: a.startingJuz }))
+      .filter((j) => !(myMonthCompletionMap.get(`${day}:${j.startingJuz}`) ?? false));
 
-    if (!entry[0] || !entry[0].completed) {
-      missedDays.push({
-        khatmDay: day,
-        juz: getJuzForDay(member[0].startingJuz, day),
-      });
+    if (incomplete.length > 0) {
+      missedDays.push({ khatmDay: day, juzList: incomplete });
     }
   }
 
-  const doneCount = slots.filter((s) => s.completed).length;
-
-  // Hijri date — map month number to Arabic/English
-  const hijriMonthNames: Record<string, string> = {
-    "1": "Muharram", "2": "Safar", "3": "Rabi al-Awwal", "4": "Rabi al-Thani",
-    "5": "Jumada al-Ula", "6": "Jumada al-Thani", "7": "Rajab", "8": "Shaban",
-    "9": "Ramadan", "10": "Shawwal", "11": "Dhul Qadah", "12": "Dhul Hijjah",
-  };
+  let resetLabel = resetTimeStr;
+  if (group.resetType === "prayer") resetLabel = group.resetValue;
 
   return {
     member: {
-      id: member[0].id,
-      name: member[0].name,
-      code: member[0].code,
-      startingJuz: member[0].startingJuz,
-      isAdmin: member[0].isAdmin,
+      id: member.id,
+      name: member.name,
+      code: member.code,
+      startingJuz: member.startingJuz,
+      isAdmin: member.isAdmin,
     },
     khatmDay,
-    myJuz,
-    isTodayCompleted,
+    myJuzSlots,
+    allMyJuzCompleted,
     slots,
     missedDays,
     hijriDate: {
       day: prayer.hijriDay,
       month: prayer.hijriMonthAr,
       year: prayer.hijriYear,
-      monthEn: hijriMonthNames[prayer.hijriMonth] ?? prayer.hijriMonth,
+      monthEn: HIJRI_MONTH_NAMES_EN[prayer.hijriMonth] ?? prayer.hijriMonth,
     },
-    maghribTime: prayer.maghribTime,
-    doneCount,
+    resetTime: resetTimeStr,
+    resetLabel,
+    doneCount: slots.filter((s) => s.completed).length,
     totalCount: 30,
-  };
-}
-
-export async function getAdminReportData() {
-  const session = await getSession();
-  if (!session) return null;
-
-  const group = await db
-    .select()
-    .from(groups)
-    .where(eq(groups.id, session.groupId))
-    .limit(1);
-
-  if (!group[0]) return null;
-
-  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
-  const todayStr = formatForDb(nowInSaudi());
-  const khatmDay = getKhatmDay(group[0].startDate, todayStr, prayer.maghribTime);
-
-  const groupMembers = await db
-    .select()
-    .from(members)
-    .where(eq(members.groupId, session.groupId))
-    .orderBy(members.startingJuz);
-
-  const todayEntries = await db
-    .select()
-    .from(dailyEntries)
-    .where(eq(dailyEntries.khatmDay, khatmDay));
-
-  const entryMap = new Map(todayEntries.map((e) => [e.memberId, e]));
-
-  const membersWithStatus = groupMembers.map((m) => ({
-    id: m.id,
-    name: m.name,
-    code: m.code,
-    startingJuz: m.startingJuz,
-    isAdmin: m.isAdmin,
-    completed: entryMap.get(m.id)?.completed ?? false,
-  }));
-
-  return {
-    members: membersWithStatus,
-    hijriDate: {
-      day: prayer.hijriDay,
-      month: prayer.hijriMonthAr,
-      year: prayer.hijriYear,
-      monthEn: prayer.hijriMonth,
-    },
-    doneCount: membersWithStatus.filter((m) => m.completed).length,
-    totalCount: membersWithStatus.length,
-    groupId: group[0].id,
+    hijriMonth,
+    hijriYear,
   };
 }

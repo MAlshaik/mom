@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Arabic, Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -38,6 +38,9 @@ export const metadata: Metadata = {
     title: "ختم المهدوي",
     statusBarStyle: "black-translucent",
   },
+};
+
+export const viewport: Viewport = {
   themeColor: "#1B3A6B",
 };
 

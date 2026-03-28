@@ -1,5 +1,8 @@
 "use server";
 
+import { db } from "@/server/db";
+import { groups } from "@/server/db/schema";
+import { eq } from "drizzle-orm";
 import { createSession, clearSession, getMemberByCode } from "@/lib/auth";
 
 export async function loginAction(code: string) {
@@ -14,6 +17,13 @@ export async function loginAction(code: string) {
     isAdmin: member.isAdmin,
   });
 
+  // Get the group slug for redirect
+  const group = await db
+    .select({ slug: groups.slug })
+    .from(groups)
+    .where(eq(groups.id, member.groupId))
+    .limit(1);
+
   return {
     success: true as const,
     member: {
@@ -24,6 +34,7 @@ export async function loginAction(code: string) {
       isAdmin: member.isAdmin,
       groupId: member.groupId,
     },
+    slug: group[0]?.slug ?? null,
   };
 }
 

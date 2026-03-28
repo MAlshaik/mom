@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 interface MissedDay {
   khatmDay: number;
-  juz: number;
+  juzDisplay: string;
 }
 
 interface MissedDaysProps {
@@ -31,8 +31,8 @@ export function MissedDays({ missedDays, onRegister }: MissedDaysProps) {
               className="flex-shrink-0 h-auto py-2 px-4 flex flex-col gap-0.5 border-red-300 dark:border-red-700 hover:bg-red-100 hover:text-red-700 hover:border-red-300 dark:hover:bg-red-900/30 dark:hover:text-red-300 dark:hover:border-red-700"
               onClick={() => onRegister(day.khatmDay)}
             >
-              <span className="text-xs text-muted-foreground group-hover:text-white">
-                {t("juz")} {day.juz}
+              <span className="text-xs text-muted-foreground">
+                {t("juz")} {day.juzDisplay}
               </span>
               <span className="text-xs font-medium">
                 {t("register")}

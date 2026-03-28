@@ -1,0 +1,3 @@
+ALTER TABLE "daily_entries" DROP CONSTRAINT "daily_entries_member_id_khatm_day_hijri_month_hijri_year_unique";--> statement-breakpoint
+ALTER TABLE "daily_entries" ADD COLUMN "starting_juz" integer;--> statement-breakpoint
+ALTER TABLE "daily_entries" ADD CONSTRAINT "daily_entries_member_id_khatm_day_starting_juz_hijri_month_hijri_year_unique" UNIQUE("member_id","khatm_day","starting_juz","hijri_month","hijri_year");

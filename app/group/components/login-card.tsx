@@ -27,39 +27,31 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
-      <div className="text-center mb-10">
-        <h1 className="text-3xl font-bold tracking-tight">
-          🌸 {t("appName")} 🌸
-        </h1>
-      </div>
-
-      <Card className="w-full max-w-xs shadow-sm">
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <label className="block text-sm text-muted-foreground text-center">
-              {t("enterCode")}
-            </label>
-            <Input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="A3"
-              className={`text-center text-lg tracking-widest h-12 ${
-                error ? "border-destructive" : ""
-              }`}
-              dir="ltr"
-              autoFocus
-            />
-            <Button
-              type="submit"
-              disabled={submitting}
-              className="w-full h-12 text-base bg-[#1B3A6B] text-white hover:bg-[#152E55] dark:bg-[#1E4080] dark:hover:bg-[#16326A]"
-            >
-              {submitting ? "..." : t("login")}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+    <Card className="w-full max-w-xs mx-auto shadow-sm">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label className="block text-sm text-muted-foreground text-center">
+            {t("enterCode")}
+          </label>
+          <Input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="A3"
+            className={`text-center text-lg tracking-widest h-12 ${
+              error ? "border-destructive" : ""
+            }`}
+            dir="ltr"
+            autoFocus
+          />
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="w-full h-12 text-base bg-[#1B3A6B] text-white hover:bg-[#152E55] dark:bg-[#1E4080] dark:hover:bg-[#16326A]"
+          >
+            {submitting ? "..." : t("login")}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

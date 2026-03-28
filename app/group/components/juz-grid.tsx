@@ -6,10 +6,11 @@ import type { MockSlot } from "@/lib/mock-data";
 interface JuzGridProps {
   slots: MockSlot[];
   currentMemberId: string;
+  isAdmin?: boolean;
   onSlotTap: (slot: MockSlot) => void;
 }
 
-export function JuzGrid({ slots, currentMemberId, onSlotTap }: JuzGridProps) {
+export function JuzGrid({ slots, currentMemberId, isAdmin, onSlotTap }: JuzGridProps) {
   const { t } = useLocale();
 
   return (
@@ -34,8 +35,8 @@ export function JuzGrid({ slots, currentMemberId, onSlotTap }: JuzGridProps) {
           const isMine = slot.member?.id === currentMemberId;
           const isDone = slot.completed;
           const isAssigned = slot.member !== null;
-          // Tappable if: unassigned, or user's own slot
-          const isTappable = !isAssigned || isMine;
+          // Tappable if: unassigned, user's own slot, or admin
+          const isTappable = !isAssigned || isMine || (isAdmin && isAssigned);
 
           return (
             <button

@@ -1,17 +1,11 @@
 const RIYADH_TZ = "Asia/Riyadh";
 
-/**
- * Get current date/time in Saudi Arabia.
- */
 export function nowInSaudi(): Date {
   return new Date(
     new Date().toLocaleString("en-US", { timeZone: RIYADH_TZ })
   );
 }
 
-/**
- * Format a Date as DD-MM-YYYY (for aladhan API).
- */
 export function formatForApi(date: Date): string {
   const d = String(date.getDate()).padStart(2, "0");
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -19,9 +13,6 @@ export function formatForApi(date: Date): string {
   return `${d}-${m}-${y}`;
 }
 
-/**
- * Format a Date as YYYY-MM-DD (for DB storage).
- */
 export function formatForDb(date: Date): string {
   const d = String(date.getDate()).padStart(2, "0");
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -29,46 +20,62 @@ export function formatForDb(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/**
- * Parse an HH:MM time string into { hours, minutes }.
- */
 function parseTime(time: string): { hours: number; minutes: number } {
   const [h, m] = time.split(":").map(Number);
   return { hours: h, minutes: m };
 }
 
 /**
- * Check if the current Saudi time is past Maghrib.
+ * Check if current Saudi time is past a given HH:MM time.
  */
-export function isPastMaghrib(maghribTime: string): boolean {
+export function isPastTime(timeStr: string): boolean {
   const now = nowInSaudi();
-  const { hours, minutes } = parseTime(maghribTime);
+  const { hours, minutes } = parseTime(timeStr);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const maghribMinutes = hours * 60 + minutes;
-  return nowMinutes >= maghribMinutes;
+  const targetMinutes = hours * 60 + minutes;
+  return nowMinutes >= targetMinutes;
 }
 
 /**
- * Count days between two YYYY-MM-DD dates.
+ * Get the reset time for a group based on its config and today's prayer data.
  */
-function daysBetween(startDateStr: string, endDateStr: string): number {
-  const start = new Date(startDateStr + "T00:00:00");
-  const end = new Date(endDateStr + "T00:00:00");
-  return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+export function getResetTime(
+  resetType: string,
+  resetValue: string,
+  prayerTimes: Record<string, string>
+): string {
+  if (resetType === "fixed") {
+    return resetValue; // e.g., "21:30"
+  }
+  // Prayer-based: look up the prayer name
+  return prayerTimes[resetValue] ?? prayerTimes["Maghrib"] ?? "18:30";
 }
 
 /**
- * Calculate the current khatm day (0-indexed from group start).
- * If past Maghrib, the day advances by 1.
+ * Calculate khatm day relative to the group's start day within the month.
+ *
+ * The group starts on a specific Hijri day (e.g., 9 Shawwal).
+ * Each month, the cycle resets on that same day number.
+ *
+ * Example: startDayInMonth=9, currentHijriDay=9, pastReset=false → khatmDay=0
+ * Example: startDayInMonth=9, currentHijriDay=9, pastReset=true  → khatmDay=1
+ * Example: startDayInMonth=9, currentHijriDay=10, pastReset=false → khatmDay=1
+ * Example: startDayInMonth=9, currentHijriDay=15, pastReset=false → khatmDay=6
+ *
+ * If current day is before the start day in the month, it means we're still
+ * in the previous cycle (wrapping from last month).
  */
-export function getKhatmDay(
-  groupStartDate: string,
-  todayDate: string,
-  maghribTime: string
+export function getKhatmDayHijri(
+  currentHijriDay: number,
+  startDayInMonth: number,
+  pastResetTime: boolean
 ): number {
-  const base = daysBetween(groupStartDate, todayDate);
-  const pastMaghrib = isPastMaghrib(maghribTime);
-  return Math.max(0, base + (pastMaghrib ? 1 : 0));
+  let day = currentHijriDay - startDayInMonth + (pastResetTime ? 1 : 0);
+  // If negative, we're before the start day this month — wrap from previous month
+  if (day < 0) {
+    day += 30; // approximate, Hijri months are 29-30 days
+  }
+  return Math.max(0, day);
 }
 
 /**
@@ -76,4 +83,20 @@ export function getKhatmDay(
  */
 export function getJuzForDay(startingJuz: number, khatmDay: number): number {
   return ((startingJuz - 1 + khatmDay) % 30) + 1;
+}
+
+/**
+ * Get juz label for display — handles 29-day month where last day is "29-30".
+ */
+export function getJuzLabel(
+  startingJuz: number,
+  khatmDay: number,
+  isLastDayOf29DayMonth: boolean
+): string {
+  const juz = getJuzForDay(startingJuz, khatmDay);
+  if (isLastDayOf29DayMonth && khatmDay === 28) {
+    const juz2 = getJuzForDay(startingJuz, 29);
+    return `${juz}-${juz2}`;
+  }
+  return String(juz);
 }

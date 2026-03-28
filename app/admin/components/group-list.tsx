@@ -14,12 +14,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { listGroupsAction, createGroupAction, deleteGroupAction } from "@/server/actions/admin";
-import { Plus, Trash2, Users } from "lucide-react";
+import { Plus, Trash2, Users, BookOpen } from "lucide-react";
 import { HijriDatePicker } from "@/components/hijri-date-picker";
 
 interface GroupInfo {
   id: string;
   name: string;
+  slug: string;
+  type: string;
   city: string;
   country: string;
   startDate: string;
@@ -32,7 +34,6 @@ interface GroupListProps {
 
 async function hijriToGregorian(hijriDate: string): Promise<string> {
   try {
-    // hijriDate is "YYYY-MM-DD" in Hijri
     const [y, m, d] = hijriDate.split("-");
     const res = await fetch(
       `https://api.aladhan.com/v1/hToG/${d}-${m}-${y}?timezonestring=Asia/Riyadh`
@@ -52,9 +53,15 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
   const [groups, setGroups] = useState<GroupInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [formName, setFormName] = useState("");
-  const [hijriDate, setHijriDate] = useState("1447-01-01");
   const [saving, setSaving] = useState(false);
+
+  // Form state
+  const [groupType, setGroupType] = useState<"khatm" | "goal">("khatm");
+  const [formName, setFormName] = useState("");
+  const [hijriDate, setHijriDate] = useState("1447-10-01");
+  // Goal fields
+  const [goalDesc, setGoalDesc] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const loadGroups = async () => {
     const data = await listGroupsAction();
@@ -67,13 +74,22 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
   }, []);
 
   const handleCreate = async () => {
-    if (!formName.trim() || !hijriDate) return;
+    if (!formName.trim()) return;
     setSaving(true);
 
     const gregorianDate = await hijriToGregorian(hijriDate);
-    await createGroupAction({ name: formName.trim(), startDate: gregorianDate });
+
+    await createGroupAction({
+      name: formName.trim(),
+      startDate: gregorianDate,
+      type: groupType,
+      goalDescription: groupType === "goal" ? goalDesc : undefined,
+      endDate: groupType === "goal" && endDate ? await hijriToGregorian(endDate) : undefined,
+    });
+
     setDialogOpen(false);
     setFormName("");
+    setGoalDesc("");
     setSaving(false);
     loadGroups();
   };
@@ -103,14 +119,58 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
               <DialogTitle>{locale === "ar" ? "مجموعة جديدة" : "New Group"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
+              {/* Type selector */}
+              <div className="flex gap-2">
+                <Button
+                  variant={groupType === "khatm" ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1 cursor-pointer"
+                  onClick={() => setGroupType("khatm")}
+                >
+                  {locale === "ar" ? "ختمة قرآن" : "Quran Khatm"}
+                </Button>
+                <Button
+                  variant={groupType === "goal" ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1 cursor-pointer"
+                  onClick={() => setGroupType("goal")}
+                >
+                  {locale === "ar" ? "هدف مفتوح" : "Open Goal"}
+                </Button>
+              </div>
+
               <div className="space-y-2">
                 <Label>{locale === "ar" ? "اسم المجموعة" : "Group Name"}</Label>
                 <Input
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder={locale === "ar" ? "ختم المهدوي..." : "Khatm Al-Mahdawi..."}
+                  placeholder={groupType === "khatm"
+                    ? (locale === "ar" ? "ختم المهدوي..." : "Khatm Al-Mahdawi...")
+                    : (locale === "ar" ? "قراءة سورة يس..." : "Read Surah Yasin...")}
                 />
               </div>
+
+              {groupType === "goal" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>{locale === "ar" ? "الوصف" : "Description"}</Label>
+                    <Input
+                      value={goalDesc}
+                      onChange={(e) => setGoalDesc(e.target.value)}
+                      placeholder={locale === "ar" ? "قراءة سورة يس مرة واحدة" : "Read Surah Yasin once"}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{locale === "ar" ? "تاريخ الانتهاء (اختياري)" : "End Date (optional)"}</Label>
+                    <HijriDatePicker
+                      value={endDate}
+                      onChange={(v) => setEndDate(v)}
+                      locale={locale}
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="space-y-2">
                 <Label>{locale === "ar" ? "تاريخ البداية (هجري)" : "Start Date (Hijri)"}</Label>
                 <HijriDatePicker
@@ -119,6 +179,7 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
                   locale={locale}
                 />
               </div>
+
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" onClick={() => setDialogOpen(false)} className="cursor-pointer">
                   {t("cancel")}
@@ -148,12 +209,16 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
             <Card key={group.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => onSelectGroup(group.id)}>
               <CardContent className="py-3 flex items-center justify-between">
                 <div>
-                  <div className="font-medium text-sm">{group.name}</div>
+                  <div className="font-medium text-sm flex items-center gap-1.5">
+                    {group.type === "goal" && <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />}
+                    {group.name}
+                  </div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
                     <span className="flex items-center gap-1">
                       <Users className="h-3 w-3" />
                       {group.memberCount}
                     </span>
+                    <span className="text-muted-foreground/50" dir="ltr">/{group.slug}</span>
                   </div>
                 </div>
                 <Button

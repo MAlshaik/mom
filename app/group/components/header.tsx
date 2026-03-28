@@ -11,6 +11,7 @@ interface HeaderProps {
     monthEn: string;
   };
   maghribTime: string;
+  resetLabel?: string;
 }
 
 function to12Hour(time24: string): string {

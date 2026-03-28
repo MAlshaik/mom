@@ -1,153 +1,189 @@
 "use server";
 
 import { db } from "@/server/db";
-import { dailyEntries, members, groups } from "@/server/db/schema";
-import { eq, and } from "drizzle-orm";
-import { requireSession } from "@/lib/auth";
-import { getKhatmDay, getJuzForDay, formatForDb, nowInSaudi } from "@/lib/khatm-day";
-import { getTodayPrayerData } from "@/lib/prayer-times";
+import { dailyEntries, members, groups, memberJuz } from "@/server/db/schema";
+import { eq, and, isNull } from "drizzle-orm";
+import { requireSession, requireAdmin } from "@/lib/auth";
+import { getKhatmDayHijri, isPastTime, getResetTime } from "@/lib/khatm-day";
+import { getTodayPrayerData, prayerTimesMap } from "@/lib/prayer-times";
+import { getHijriStartDay } from "@/lib/hijri-start-cache";
 
-export async function toggleEntryAction(khatmDay: number) {
-  const session = await requireSession();
-
-  // Validate that khatmDay is today or any past day back to group start
-  const member = await db
-    .select()
-    .from(members)
-    .where(eq(members.id, session.memberId))
-    .limit(1);
-
-  if (!member[0]) return { success: false, error: "Member not found" };
-
-  const group = await db
-    .select()
-    .from(groups)
-    .where(eq(groups.id, session.groupId))
-    .limit(1);
-
-  if (!group[0]) return { success: false, error: "Group not found" };
+async function getGroupContext(groupId: string) {
+  const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!group[0]) return null;
 
   const prayer = await getTodayPrayerData(group[0].city, group[0].country);
-  const todayStr = formatForDb(nowInSaudi());
-  const currentKhatmDay = getKhatmDay(group[0].startDate, todayStr, prayer.maghribTime);
+  const prayers = prayerTimesMap(prayer);
+  const resetTimeStr = getResetTime(group[0].resetType, group[0].resetValue, prayers);
+  const pastReset = isPastTime(resetTimeStr);
 
-  // Allow marking today and any past day back to group start
-  if (khatmDay > currentKhatmDay || khatmDay < 0) {
+  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
+  const startDayInMonth = await getHijriStartDay(group[0].startDate);
+  const khatmDay = getKhatmDayHijri(currentHijriDay, startDayInMonth, pastReset);
+
+  return {
+    group: group[0],
+    khatmDay,
+    hijriMonth: prayer.hijriMonth,
+    hijriYear: prayer.hijriYear,
+  };
+}
+
+/**
+ * Toggle a single juz entry for the current member.
+ * startingJuz = which juz assignment to toggle (from member_juz.starting_juz)
+ */
+export async function toggleSingleJuzAction(
+  khatmDay: number,
+  startingJuz: number,
+  hijriMonth: string,
+  hijriYear: string
+) {
+  const session = await requireSession();
+
+  const ctx = await getGroupContext(session.groupId);
+  if (!ctx) return { success: false, error: "Group not found" };
+  if (khatmDay > ctx.khatmDay || khatmDay < 0) {
     return { success: false, error: "Cannot modify this day" };
   }
 
-  // Check if entry exists
-  const existing = await db
-    .select()
-    .from(dailyEntries)
-    .where(
-      and(
-        eq(dailyEntries.memberId, session.memberId),
-        eq(dailyEntries.khatmDay, khatmDay)
-      )
+  const existing = await db.select().from(dailyEntries).where(
+    and(
+      eq(dailyEntries.memberId, session.memberId),
+      eq(dailyEntries.khatmDay, khatmDay),
+      eq(dailyEntries.startingJuz, startingJuz),
+      eq(dailyEntries.hijriMonth, hijriMonth),
+      eq(dailyEntries.hijriYear, hijriYear)
     )
-    .limit(1);
+  ).limit(1);
 
   if (existing[0]) {
-    // Toggle: if completed, mark as not completed and vice versa
-    await db
-      .update(dailyEntries)
-      .set({
-        completed: !existing[0].completed,
-        markedAt: new Date(),
-      })
-      .where(eq(dailyEntries.id, existing[0].id));
-
+    await db.update(dailyEntries).set({
+      completed: !existing[0].completed,
+      markedAt: new Date(),
+    }).where(eq(dailyEntries.id, existing[0].id));
     return { success: true, completed: !existing[0].completed };
   } else {
-    // Create new entry as completed
     await db.insert(dailyEntries).values({
       memberId: session.memberId,
       khatmDay,
+      startingJuz,
+      hijriMonth,
+      hijriYear,
       completed: true,
     });
-
     return { success: true, completed: true };
   }
 }
 
 /**
- * Get all entries for a group on a specific khatm day.
+ * Toggle ALL juz entries for the current member at once (the big button).
  */
-export async function getGroupEntriesAction(khatmDay: number) {
+export async function toggleAllJuzAction(
+  khatmDay: number,
+  hijriMonth: string,
+  hijriYear: string
+) {
   const session = await requireSession();
 
-  const groupMembers = await db
-    .select()
-    .from(members)
-    .where(eq(members.groupId, session.groupId));
+  const ctx = await getGroupContext(session.groupId);
+  if (!ctx) return { success: false, error: "Group not found" };
+  if (khatmDay > ctx.khatmDay || khatmDay < 0) {
+    return { success: false, error: "Cannot modify this day" };
+  }
 
-  const entries = await db
-    .select()
-    .from(dailyEntries)
-    .where(eq(dailyEntries.khatmDay, khatmDay));
+  // Get all juz assignments for this member
+  const assignments = await db.select().from(memberJuz).where(
+    and(eq(memberJuz.memberId, session.memberId), eq(memberJuz.groupId, session.groupId))
+  );
 
-  const entryMap = new Map(entries.map((e) => [e.memberId, e]));
+  // Check current state — if all are completed, undo all. Otherwise complete all.
+  const existingEntries = await db.select().from(dailyEntries).where(
+    and(
+      eq(dailyEntries.memberId, session.memberId),
+      eq(dailyEntries.khatmDay, khatmDay),
+      eq(dailyEntries.hijriMonth, hijriMonth),
+      eq(dailyEntries.hijriYear, hijriYear)
+    )
+  );
 
-  return groupMembers.map((m) => {
-    const entry = entryMap.get(m.id);
-    return {
-      memberId: m.id,
-      memberName: m.name,
-      juz: getJuzForDay(m.startingJuz, khatmDay),
-      completed: entry?.completed ?? false,
-    };
-  });
-}
+  const completedJuz = new Set(
+    existingEntries.filter((e) => e.completed).map((e) => e.startingJuz)
+  );
+  const allCompleted = assignments.every((a) => completedJuz.has(a.startingJuz));
 
-/**
- * Get missed days for a member (days with no completed entry).
- */
-export async function getMissedDaysAction() {
-  const session = await requireSession();
+  for (const assignment of assignments) {
+    const existing = existingEntries.find((e) => e.startingJuz === assignment.startingJuz);
 
-  const member = await db
-    .select()
-    .from(members)
-    .where(eq(members.id, session.memberId))
-    .limit(1);
-
-  if (!member[0]) return [];
-
-  const group = await db
-    .select()
-    .from(groups)
-    .where(eq(groups.id, session.groupId))
-    .limit(1);
-
-  if (!group[0]) return [];
-
-  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
-  const todayStr = formatForDb(nowInSaudi());
-  const currentKhatmDay = getKhatmDay(group[0].startDate, todayStr, prayer.maghribTime);
-
-  // Check all past days back to group start (excluding today)
-  const missedDays: { khatmDay: number; juz: number }[] = [];
-
-  for (let day = currentKhatmDay - 1; day >= 0; day--) {
-    const entry = await db
-      .select()
-      .from(dailyEntries)
-      .where(
-        and(
-          eq(dailyEntries.memberId, session.memberId),
-          eq(dailyEntries.khatmDay, day)
-        )
-      )
-      .limit(1);
-
-    if (!entry[0] || !entry[0].completed) {
-      missedDays.push({
-        khatmDay: day,
-        juz: getJuzForDay(member[0].startingJuz, day),
-      });
+    if (allCompleted) {
+      // Undo all
+      if (existing) {
+        await db.update(dailyEntries).set({ completed: false, markedAt: new Date() })
+          .where(eq(dailyEntries.id, existing.id));
+      }
+    } else {
+      // Complete all that aren't already done
+      if (existing && !existing.completed) {
+        await db.update(dailyEntries).set({ completed: true, markedAt: new Date() })
+          .where(eq(dailyEntries.id, existing.id));
+      } else if (!existing) {
+        await db.insert(dailyEntries).values({
+          memberId: session.memberId,
+          khatmDay,
+          startingJuz: assignment.startingJuz,
+          hijriMonth,
+          hijriYear,
+          completed: true,
+        });
+      }
     }
   }
 
-  return missedDays;
+  return { success: true, completed: !allCompleted };
+}
+
+/**
+ * Admin toggles a single juz entry for any member.
+ */
+export async function adminToggleEntryAction(
+  targetMemberId: string,
+  khatmDay: number,
+  startingJuz: number,
+  hijriMonth: string,
+  hijriYear: string
+) {
+  const session = await requireAdmin();
+
+  const member = await db.select().from(members).where(
+    and(eq(members.id, targetMemberId), eq(members.groupId, session.groupId))
+  ).limit(1);
+  if (!member[0]) return { success: false, error: "Member not found" };
+
+  const existing = await db.select().from(dailyEntries).where(
+    and(
+      eq(dailyEntries.memberId, targetMemberId),
+      eq(dailyEntries.khatmDay, khatmDay),
+      eq(dailyEntries.startingJuz, startingJuz),
+      eq(dailyEntries.hijriMonth, hijriMonth),
+      eq(dailyEntries.hijriYear, hijriYear)
+    )
+  ).limit(1);
+
+  if (existing[0]) {
+    await db.update(dailyEntries).set({
+      completed: !existing[0].completed,
+      markedAt: new Date(),
+    }).where(eq(dailyEntries.id, existing[0].id));
+    return { success: true, completed: !existing[0].completed };
+  } else {
+    await db.insert(dailyEntries).values({
+      memberId: targetMemberId,
+      khatmDay,
+      startingJuz,
+      hijriMonth,
+      hijriYear,
+      completed: true,
+    });
+    return { success: true, completed: true };
+  }
 }

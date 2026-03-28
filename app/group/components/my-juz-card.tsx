@@ -5,13 +5,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 interface MyJuzCardProps {
-  juz: number;
+  juzDisplay: string;
   completed: boolean;
   memberName: string;
   onToggle: () => void;
 }
 
-export function MyJuzCard({ juz, completed, onToggle }: MyJuzCardProps) {
+export function MyJuzCard({ juzDisplay, completed, onToggle }: MyJuzCardProps) {
   const { t } = useLocale();
 
   return (
@@ -25,7 +25,7 @@ export function MyJuzCard({ juz, completed, onToggle }: MyJuzCardProps) {
       <CardContent className="pt-6 text-center space-y-4">
         <div className="text-sm text-muted-foreground">{t("yourJuzToday")}</div>
         <div className="text-5xl font-bold tabular-nums">
-          {juz}
+          {juzDisplay}
         </div>
 
         {completed ? (

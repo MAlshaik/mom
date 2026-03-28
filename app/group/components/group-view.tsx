@@ -4,12 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
 import { getGroupPageData, type SlotData } from "@/server/actions/data";
-import { toggleEntryAction } from "@/server/actions/entries";
+import { toggleAllJuzAction, toggleSingleJuzAction, adminToggleEntryAction } from "@/server/actions/entries";
 import { Header } from "./header";
 import { MissedDays } from "./missed-days";
 import { MyJuzCard } from "./my-juz-card";
 import { JuzGrid } from "./juz-grid";
 import { fireConfetti } from "@/lib/use-confetti";
+import { NavBar } from "@/components/nav-bar";
 
 export function GroupView() {
   const { member } = useAuth();
@@ -29,38 +30,93 @@ export function GroupView() {
 
   if (loading || !data || !member) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-muted-foreground text-sm">...</div>
-      </div>
+      <>
+        <NavBar />
+        <div className="max-w-md mx-auto px-4 pb-4 space-y-4 animate-pulse">
+          <div className="text-center space-y-3 pb-2">
+            <div className="h-7 w-48 bg-muted rounded-md mx-auto" />
+            <div className="h-4 w-56 bg-muted rounded-md mx-auto" />
+            <div className="h-3 w-36 bg-muted rounded-md mx-auto" />
+            <div className="h-4 w-40 bg-muted rounded-md mx-auto" />
+          </div>
+          <div className="rounded-xl border p-6 space-y-4">
+            <div className="h-4 w-24 bg-muted rounded-md mx-auto" />
+            <div className="h-12 w-16 bg-muted rounded-md mx-auto" />
+            <div className="h-12 w-full bg-muted rounded-lg" />
+          </div>
+          <div className="h-4 w-32 bg-muted rounded-md mx-auto" />
+          <div className="grid grid-cols-5 gap-2">
+            {Array.from({ length: 30 }, (_, i) => (
+              <div key={i} className="rounded-lg p-2.5 bg-muted h-16" />
+            ))}
+          </div>
+        </div>
+      </>
     );
   }
 
-  const handleToggleToday = async () => {
-    const wasCompleted = data.isTodayCompleted;
-    // Optimistic update
+  // Big button: toggle all juz at once
+  const handleToggleAll = async () => {
+    const wasAllDone = data.allMyJuzCompleted;
+    // Optimistic
     setData((prev) =>
       prev
         ? {
             ...prev,
-            isTodayCompleted: !wasCompleted,
+            allMyJuzCompleted: !wasAllDone,
+            myJuzSlots: prev.myJuzSlots.map((s) => ({ ...s, completed: !wasAllDone })),
             slots: prev.slots.map((s) =>
-              s.memberId === member.id ? { ...s, completed: !wasCompleted } : s
+              s.memberId === member.id ? { ...s, completed: !wasAllDone } : s
             ),
-            doneCount: prev.doneCount + (wasCompleted ? -1 : 1),
+            doneCount: prev.doneCount + (wasAllDone ? -prev.myJuzSlots.filter((s) => s.completed).length : prev.myJuzSlots.filter((s) => !s.completed).length),
           }
         : prev
     );
+    if (!wasAllDone) fireConfetti();
+
+    const result = await toggleAllJuzAction(data.khatmDay, data.hijriMonth, data.hijriYear);
+    if (!result.success) loadData();
+  };
+
+  // Grid tap: toggle a single slot
+  const handleSlotTap = async (slot: SlotData) => {
+    if (!slot.memberId || slot.startingJuz === null) return;
+
+    const isMySlot = slot.memberId === member.id;
+    const wasCompleted = slot.completed;
+
+    // Optimistic update
+    setData((prev) => {
+      if (!prev) return prev;
+      const newSlots = prev.slots.map((s) =>
+        s.juz === slot.juz ? { ...s, completed: !wasCompleted } : s
+      );
+      const newMyJuzSlots = isMySlot
+        ? prev.myJuzSlots.map((s) =>
+            s.startingJuz === slot.startingJuz ? { ...s, completed: !wasCompleted } : s
+          )
+        : prev.myJuzSlots;
+      return {
+        ...prev,
+        slots: newSlots,
+        myJuzSlots: newMyJuzSlots,
+        allMyJuzCompleted: newMyJuzSlots.every((s) => s.completed),
+        doneCount: prev.doneCount + (wasCompleted ? -1 : 1),
+      };
+    });
     if (!wasCompleted) fireConfetti();
 
-    const result = await toggleEntryAction(data.khatmDay);
-    if (!result.success) {
-      // Revert on failure
-      loadData();
+    if (isMySlot) {
+      const result = await toggleSingleJuzAction(data.khatmDay, slot.startingJuz, data.hijriMonth, data.hijriYear);
+      if (!result.success) loadData();
+    } else if (data.member.isAdmin) {
+      const result = await adminToggleEntryAction(slot.memberId, data.khatmDay, slot.startingJuz, data.hijriMonth, data.hijriYear);
+      if (!result.success) loadData();
     }
   };
 
+  // Missed days: register all juz for that day
   const handleRegisterMissed = async (khatmDay: number) => {
-    // Optimistic: remove from missed days
     setData((prev) =>
       prev
         ? { ...prev, missedDays: prev.missedDays.filter((d) => d.khatmDay !== khatmDay) }
@@ -68,40 +124,35 @@ export function GroupView() {
     );
     fireConfetti();
 
-    const result = await toggleEntryAction(khatmDay);
-    if (!result.success) {
-      loadData();
-    }
+    const result = await toggleAllJuzAction(khatmDay, data.hijriMonth, data.hijriYear);
+    if (!result.success) loadData();
   };
 
-  const handleSlotTap = async (slot: SlotData) => {
-    // Tap unassigned slot — for now just toggle as extra completion
-    // (claiming unassigned slots will need a separate server action)
-    if (!slot.memberId) return;
-
-    // Tap own slot → toggle completion
-    if (slot.memberId === member.id) {
-      handleToggleToday();
-    }
-  };
+  const juzDisplay = data.myJuzSlots.map((s) => s.juz).join(", ");
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 space-y-4">
+    <>
+      <NavBar />
+      <div className="max-w-md mx-auto px-4 pb-4 space-y-4">
       <Header
         hijriDate={data.hijriDate}
-        maghribTime={data.maghribTime}
+        maghribTime={data.resetTime}
+        resetLabel={data.resetLabel}
       />
 
       <MyJuzCard
-        juz={data.myJuz}
-        completed={data.isTodayCompleted}
+        juzDisplay={juzDisplay}
+        completed={data.allMyJuzCompleted}
         memberName={data.member.name}
-        onToggle={handleToggleToday}
+        onToggle={handleToggleAll}
       />
 
       {data.missedDays.length > 0 && (
         <MissedDays
-          missedDays={data.missedDays}
+          missedDays={data.missedDays.map((d) => ({
+            khatmDay: d.khatmDay,
+            juzDisplay: d.juzList.map((j) => j.juz).join(", "),
+          }))}
           onRegister={handleRegisterMissed}
         />
       )}
@@ -117,6 +168,7 @@ export function GroupView() {
           completed: s.completed,
         }))}
         currentMemberId={member.id}
+        isAdmin={data.member.isAdmin}
         onSlotTap={(mockSlot) => {
           const realSlot = data.slots.find((s) => s.juz === mockSlot.juz);
           if (realSlot) handleSlotTap(realSlot);
@@ -127,5 +179,6 @@ export function GroupView() {
         {t("note")}
       </p>
     </div>
+    </>
   );
 }
