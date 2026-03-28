@@ -353,6 +353,25 @@ export function MemberListReal({ members, onAdd, onUpdate, onRemove, onAddJuz, o
                           }
                         }}
                       />
+                      <button
+                        onClick={async () => {
+                          const j = parseInt(newJuz);
+                          if (j >= 1 && j <= 30) {
+                            await onAddJuz(member.id, j);
+                            setAddingJuzFor(null);
+                            setNewJuz("");
+                          }
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer font-medium"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => { setAddingJuzFor(null); setNewJuz(""); }}
+                        className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     </span>
                   ) : (
                     <button

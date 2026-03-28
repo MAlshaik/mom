@@ -90,6 +90,7 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
   ]);
 
   const is29DayMonth = monthLength === 29;
+  const isLastDayOf29 = is29DayMonth && khatmDay === 28; // 0-indexed day 28 = 29th day
   const memberMap = new Map(groupMembers.map((m) => [m.id, m]));
 
   // Build juz → assignment map for today
@@ -98,9 +99,10 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
     const juz = getJuzForDay(a.startingJuz, khatmDay);
     juzToAssignment.set(juz, { memberId: a.memberId, startingJuz: a.startingJuz });
 
-    // 29-day month: whoever's rotation lands on juz 29, also takes juz 30
-    if (is29DayMonth && juz === 29) {
-      juzToAssignment.set(30, { memberId: a.memberId, startingJuz: a.startingJuz });
+    // Last day of 29-day month: everyone also does their day-30 juz
+    if (isLastDayOf29) {
+      const juz30 = getJuzForDay(a.startingJuz, 29); // what they'd read on day 30
+      juzToAssignment.set(juz30, { memberId: a.memberId, startingJuz: a.startingJuz });
     }
   }
 
@@ -129,7 +131,7 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
     };
   });
 
-  // My juz for today — include the double juz if applicable
+  // My juz for today — include double juz on last day of 29-day month
   const myAssignments = allJuzAssignments.filter((a) => a.memberId === member.id);
   const myJuzSlots: { juz: number; startingJuz: number; completed: boolean }[] = [];
   for (const a of myAssignments) {
@@ -137,9 +139,10 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
     const completed = completionMap.get(entryKey(member.id, a.startingJuz)) ?? false;
     myJuzSlots.push({ juz, startingJuz: a.startingJuz, completed });
 
-    // If this assignment lands on 29 in a 29-day month, show 30 too
-    if (is29DayMonth && juz === 29) {
-      myJuzSlots.push({ juz: 30, startingJuz: a.startingJuz, completed });
+    // Last day of 29-day month: everyone also does their day-30 juz
+    if (isLastDayOf29) {
+      const juz30 = getJuzForDay(a.startingJuz, 29);
+      myJuzSlots.push({ juz: juz30, startingJuz: a.startingJuz, completed });
     }
   }
   myJuzSlots.sort((a, b) => a.juz - b.juz);
