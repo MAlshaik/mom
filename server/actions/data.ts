@@ -17,6 +17,7 @@ export interface SlotData {
 }
 
 export interface GroupPageData {
+  groupName: string;
   member: {
     id: string;
     name: string;
