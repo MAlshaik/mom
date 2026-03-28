@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/server/db";
-import { members, groups, dailyEntries, memberJuz } from "@/server/db/schema";
+import { members, groups, dailyEntries, memberJuz, goalEntries } from "@/server/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { generateCode, generateSlug } from "@/lib/arabic-to-english";
 import { getKhatmDay, getJuzForDay, isPastTime, getResetTime } from "@/lib/khatm-day";
@@ -12,7 +12,9 @@ export async function listGroupsAction() {
 
   const result = [];
   for (const g of allGroups) {
-    const memberCount = await db.select().from(members).where(eq(members.groupId, g.id));
+    const memberCount = g.type === "goal"
+      ? await db.select().from(goalEntries).where(eq(goalEntries.groupId, g.id))
+      : await db.select().from(members).where(eq(members.groupId, g.id));
     result.push({
       id: g.id,
       name: g.name,
