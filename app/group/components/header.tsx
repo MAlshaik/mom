@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
 
 interface HeaderProps {
+  groupName: string;
   hijriDate: {
     day: string;
     month: string;
@@ -21,7 +22,7 @@ function to12Hour(time24: string): string {
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-export function Header({ hijriDate, maghribTime }: HeaderProps) {
+export function Header({ groupName, hijriDate, maghribTime }: HeaderProps) {
   const { member } = useAuth();
   const { locale, t } = useLocale();
 
@@ -32,14 +33,13 @@ export function Header({ hijriDate, maghribTime }: HeaderProps) {
 
   const timeDisplay = to12Hour(maghribTime);
 
-  // Hijri months are 29 or 30 days — estimate days until end of month
   const hijriDayNum = parseInt(hijriDate.day) || 0;
   const daysLeft = Math.max(0, 30 - hijriDayNum);
 
   return (
     <div className="text-center space-y-3 pb-2">
       <h1 className="text-2xl font-bold tracking-tight">
-        🌸 {t("appName")} 🌸
+        🌸 {groupName} 🌸
       </h1>
       <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
         <span>{dateStr}</span>

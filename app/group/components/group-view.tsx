@@ -135,6 +135,7 @@ export function GroupView() {
       <NavBar />
       <div className="max-w-md mx-auto px-4 pb-4 space-y-4">
       <Header
+        groupName={data.groupName}
         hijriDate={data.hijriDate}
         maghribTime={data.resetTime}
         resetLabel={data.resetLabel}

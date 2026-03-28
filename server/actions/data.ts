@@ -178,6 +178,7 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
   if (group.resetType === "prayer") resetLabel = group.resetValue;
 
   return {
+    groupName: group.name,
     member: {
       id: member.id,
       name: member.name,
