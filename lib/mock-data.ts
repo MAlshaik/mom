@@ -14,6 +14,7 @@ export interface MockEntry {
 
 export interface MockSlot {
   juz: number;
+  juzLabel?: string;
   member: MockMember | null;
   completed: boolean;
 }

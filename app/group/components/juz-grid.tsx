@@ -68,7 +68,7 @@ export function JuzGrid({ slots, currentMemberId, isAdmin, onSlotTap }: JuzGridP
                     ? "text-blue-700 dark:text-blue-300"
                     : "text-foreground"
               }`}>
-                {slot.juz}
+                {slot.juzLabel ?? slot.juz}
               </div>
               <div className={`text-xs leading-snug line-clamp-2 mt-1 min-h-[2em] font-medium ${
                 !isAssigned

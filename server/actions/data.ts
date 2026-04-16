@@ -10,6 +10,7 @@ import { getHijriStartDay } from "@/lib/hijri-start-cache";
 
 export interface SlotData {
   juz: number;
+  juzLabel: string;
   startingJuz: number | null;
   memberId: string | null;
   memberName: string | null;
@@ -94,17 +95,11 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
   const isLastDayOf29 = is29DayMonth && khatmDay === 28; // 0-indexed day 28 = 29th day
   const memberMap = new Map(groupMembers.map((m) => [m.id, m]));
 
-  // Build juz → assignment map for today
+  // Build juz → assignment map for today (day-29 juz only — each member appears once)
   const juzToAssignment = new Map<number, { memberId: string; startingJuz: number }>();
   for (const a of allJuzAssignments) {
     const juz = getJuzForDay(a.startingJuz, khatmDay);
     juzToAssignment.set(juz, { memberId: a.memberId, startingJuz: a.startingJuz });
-
-    // Last day of 29-day month: everyone also does their day-30 juz
-    if (isLastDayOf29) {
-      const juz30 = getJuzForDay(a.startingJuz, 29); // what they'd read on day 30
-      juzToAssignment.set(juz30, { memberId: a.memberId, startingJuz: a.startingJuz });
-    }
   }
 
   // Completion map: (memberId:startingJuz) → completed
@@ -123,8 +118,16 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
       ? (completionMap.get(entryKey(assignment.memberId, assignment.startingJuz)) ?? false)
       : false;
 
+    // On the last day of a 29-day month, show both juz numbers (day-29 + day-30)
+    let juzLabel = String(juz);
+    if (assignment && isLastDayOf29) {
+      const juz30 = getJuzForDay(assignment.startingJuz, 29);
+      juzLabel = `${juz}, ${juz30}`;
+    }
+
     return {
       juz,
+      juzLabel,
       startingJuz: assignment?.startingJuz ?? null,
       memberId: m?.id ?? null,
       memberName: m?.name ?? null,

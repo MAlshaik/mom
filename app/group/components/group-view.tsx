@@ -165,6 +165,7 @@ export function GroupView() {
       <JuzGrid
         slots={data.slots.map((s) => ({
           juz: s.juz,
+          juzLabel: s.juzLabel,
           member: s.memberId ? { id: s.memberId, name: s.memberName ?? "", code: "", startingJuz: 0, isAdmin: false } : null,
           completed: s.completed,
         }))}
