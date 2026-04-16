@@ -6,8 +6,8 @@ import { formatForApi, formatForDb, nowInSaudi } from "./khatm-day";
 const FALLBACK_MAGHRIB = "18:30";
 
 /**
- * Check if a Hijri month has 29 or 30 days by checking if day 30 exists.
- * Caches the result.
+ * Get the number of days in a Hijri month. Aladhan API returns month.days
+ * when querying a valid day (day 1) within that month.
  */
 const monthLengthCache = new Map<string, number>();
 export async function getHijriMonthLength(hijriMonth: string, hijriYear: string): Promise<number> {
@@ -15,20 +15,20 @@ export async function getHijriMonthLength(hijriMonth: string, hijriYear: string)
   if (monthLengthCache.has(key)) return monthLengthCache.get(key)!;
 
   try {
-    // Try to convert 30th of this Hijri month to Gregorian
     const res = await fetch(
-      `https://api.aladhan.com/v1/hToG/30-${hijriMonth}-${hijriYear}?timezonestring=Asia/Riyadh`
+      `https://api.aladhan.com/v1/hToG/1-${hijriMonth}-${hijriYear}?timezonestring=Asia/Riyadh`
     );
     const json = await res.json();
-    // If the API returns a valid date AND the Hijri month matches, it has 30 days
-    if (json.code === 200 && json.data) {
-      monthLengthCache.set(key, 30);
-      return 30;
+    // Verify the returned month matches what we asked for (day 1 should always be valid)
+    const returnedMonth = json?.data?.hijri?.month?.number;
+    const days = json?.data?.hijri?.month?.days;
+    if (returnedMonth === parseInt(hijriMonth) && (days === 29 || days === 30)) {
+      monthLengthCache.set(key, days);
+      return days;
     }
-    monthLengthCache.set(key, 29);
-    return 29;
+    // Fallback: default to 30
+    return 30;
   } catch {
-    // Default to 30
     return 30;
   }
 }
