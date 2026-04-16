@@ -30,7 +30,7 @@ interface MemberListRealProps {
   groupId: string;
 }
 
-type MonthDay = { khatmDay: number; hijriDay: number; juzList: { juz: number; startingJuz: number; completed: boolean }[] };
+type MonthDay = { khatmDay: number; hijriDay: number; juzList: { juz: number; juzLabel: string; startingJuz: number; completed: boolean }[] };
 
 export function MemberListReal({ members, onAdd, onUpdate, onRemove, onAddJuz, onRemoveJuz, onMarkDone, completedMemberIds, groupId }: MemberListRealProps) {
   const { locale, t } = useLocale();
@@ -415,7 +415,7 @@ export function MemberListReal({ members, onAdd, onUpdate, onRemove, onAddJuz, o
                             >
                               <div className="font-medium">{day.hijriDay}</div>
                               <div className="text-[9px] leading-tight opacity-70">
-                                {day.juzList.map((j) => j.juz).join(",")}
+                                {day.juzList.map((j) => j.juzLabel).join(" | ")}
                               </div>
                             </button>
                           );

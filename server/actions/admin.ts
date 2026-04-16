@@ -5,7 +5,7 @@ import { members, groups, dailyEntries, memberJuz, goalEntries } from "@/server/
 import { eq, and, ne } from "drizzle-orm";
 import { generateCode, generateSlug } from "@/lib/arabic-to-english";
 import { getKhatmDay, getJuzForDay, isPastTime, getResetTime } from "@/lib/khatm-day";
-import { getTodayPrayerData, prayerTimesMap } from "@/lib/prayer-times";
+import { getTodayPrayerData, prayerTimesMap, getHijriMonthLength } from "@/lib/prayer-times";
 
 export async function listGroupsAction() {
   const allGroups = await db.select().from(groups).orderBy(groups.createdAt);
@@ -395,7 +395,7 @@ export async function getMemberMonthDataAction(memberId: string, groupId: string
   const currentHijriDay = parseInt(prayer.hijriDay) || 1;
   const currentKhatmDay = getKhatmDay(currentHijriDay, pastReset);
 
-  const [assignments, entries] = await Promise.all([
+  const [assignments, entries, monthLength] = await Promise.all([
     db.select().from(memberJuz).where(
       and(eq(memberJuz.memberId, memberId), eq(memberJuz.groupId, groupId))
     ),
@@ -406,20 +406,33 @@ export async function getMemberMonthDataAction(memberId: string, groupId: string
         eq(dailyEntries.hijriYear, prayer.hijriYear)
       )
     ),
+    getHijriMonthLength(prayer.hijriMonth, prayer.hijriYear),
   ]);
+
+  const is29DayMonth = monthLength === 29;
 
   const completionMap = new Map<string, boolean>();
   for (const e of entries) {
     completionMap.set(`${e.khatmDay}:${e.startingJuz}`, e.completed);
   }
 
-  const days: { khatmDay: number; hijriDay: number; juzList: { juz: number; startingJuz: number; completed: boolean }[] }[] = [];
+  const days: {
+    khatmDay: number;
+    hijriDay: number;
+    juzList: { juz: number; juzLabel: string; startingJuz: number; completed: boolean }[];
+  }[] = [];
 
   for (let day = 0; day <= currentKhatmDay; day++) {
+    const isLastDayOf29 = is29DayMonth && day === 28;
     const juzList = assignments.map((a) => {
       const juz = getJuzForDay(a.startingJuz, day);
       const completed = completionMap.get(`${day}:${a.startingJuz}`) ?? false;
-      return { juz, startingJuz: a.startingJuz, completed };
+      let juzLabel = String(juz);
+      if (isLastDayOf29) {
+        const juz30 = getJuzForDay(a.startingJuz, 29);
+        juzLabel = `${juz}, ${juz30}`;
+      }
+      return { juz, juzLabel, startingJuz: a.startingJuz, completed };
     }).sort((a, b) => a.juz - b.juz);
 
     days.push({ khatmDay: day, hijriDay: day + 1, juzList });
