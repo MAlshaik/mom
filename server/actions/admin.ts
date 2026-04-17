@@ -4,8 +4,25 @@ import { db } from "@/server/db";
 import { members, groups, dailyEntries, memberJuz, goalEntries } from "@/server/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { generateCode, generateSlug } from "@/lib/arabic-to-english";
-import { getKhatmDay, getJuzForDay, isPastTime, getResetTime } from "@/lib/khatm-day";
+import { getJuzForDay, isPastTime, getResetTime, resolveHijriContext } from "@/lib/khatm-day";
 import { getTodayPrayerData, prayerTimesMap, getHijriMonthLength } from "@/lib/prayer-times";
+
+async function getResolvedContextForGroup(group: typeof groups.$inferSelect) {
+  const prayer = await getTodayPrayerData(group.city, group.country);
+  const prayers = prayerTimesMap(prayer);
+  const resetTimeStr = getResetTime(group.resetType, group.resetValue, prayers);
+  const pastReset = isPastTime(resetTimeStr);
+  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
+  const reportedMonthLength = await getHijriMonthLength(prayer.hijriMonth, prayer.hijriYear);
+  const resolved = resolveHijriContext(
+    currentHijriDay,
+    prayer.hijriMonth,
+    prayer.hijriYear,
+    reportedMonthLength,
+    pastReset
+  );
+  return { prayer, ...resolved };
+}
 
 export async function listGroupsAction() {
   const allGroups = await db.select().from(groups).orderBy(groups.createdAt);
@@ -296,20 +313,15 @@ export async function getTodayCompletionsAction(groupId: string) {
   const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
   if (!group[0]) return new Set<string>();
 
-  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
-  const prayers = prayerTimesMap(prayer);
-  const resetTimeStr = getResetTime(group[0].resetType, group[0].resetValue, prayers);
-  const pastReset = isPastTime(resetTimeStr);
-  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
-  const khatmDay = getKhatmDay(currentHijriDay, pastReset);
+  const { khatmDay, hijriMonth, hijriYear } = await getResolvedContextForGroup(group[0]);
 
   const [allJuz, todayEntries] = await Promise.all([
     db.select().from(memberJuz).where(eq(memberJuz.groupId, groupId)),
     db.select().from(dailyEntries).where(
       and(
         eq(dailyEntries.khatmDay, khatmDay),
-        eq(dailyEntries.hijriMonth, prayer.hijriMonth),
-        eq(dailyEntries.hijriYear, prayer.hijriYear)
+        eq(dailyEntries.hijriMonth, hijriMonth),
+        eq(dailyEntries.hijriYear, hijriYear)
       )
     ),
   ]);
@@ -343,12 +355,7 @@ export async function adminMarkDoneAction(memberId: string, juzAssignments: numb
   const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
   if (!group[0]) return { success: false };
 
-  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
-  const prayers = prayerTimesMap(prayer);
-  const resetTimeStr = getResetTime(group[0].resetType, group[0].resetValue, prayers);
-  const pastReset = isPastTime(resetTimeStr);
-  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
-  const khatmDay = getKhatmDay(currentHijriDay, pastReset);
+  const { khatmDay, hijriMonth, hijriYear } = await getResolvedContextForGroup(group[0]);
 
   for (const startingJuz of juzAssignments) {
     const existing = await db.select().from(dailyEntries).where(
@@ -356,8 +363,8 @@ export async function adminMarkDoneAction(memberId: string, juzAssignments: numb
         eq(dailyEntries.memberId, memberId),
         eq(dailyEntries.khatmDay, khatmDay),
         eq(dailyEntries.startingJuz, startingJuz),
-        eq(dailyEntries.hijriMonth, prayer.hijriMonth),
-        eq(dailyEntries.hijriYear, prayer.hijriYear)
+        eq(dailyEntries.hijriMonth, hijriMonth),
+        eq(dailyEntries.hijriYear, hijriYear)
       )
     ).limit(1);
 
@@ -371,8 +378,8 @@ export async function adminMarkDoneAction(memberId: string, juzAssignments: numb
         memberId,
         khatmDay,
         startingJuz,
-        hijriMonth: prayer.hijriMonth,
-        hijriYear: prayer.hijriYear,
+        hijriMonth,
+        hijriYear,
         completed: true,
       });
     }
@@ -388,12 +395,7 @@ export async function getMemberMonthDataAction(memberId: string, groupId: string
   const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
   if (!group[0]) return null;
 
-  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
-  const prayers = prayerTimesMap(prayer);
-  const resetTimeStr = getResetTime(group[0].resetType, group[0].resetValue, prayers);
-  const pastReset = isPastTime(resetTimeStr);
-  const currentHijriDay = parseInt(prayer.hijriDay) || 1;
-  const currentKhatmDay = getKhatmDay(currentHijriDay, pastReset);
+  const { prayer, khatmDay: currentKhatmDay, hijriMonth, hijriYear } = await getResolvedContextForGroup(group[0]);
 
   const [assignments, entries, monthLength] = await Promise.all([
     db.select().from(memberJuz).where(
@@ -402,11 +404,11 @@ export async function getMemberMonthDataAction(memberId: string, groupId: string
     db.select().from(dailyEntries).where(
       and(
         eq(dailyEntries.memberId, memberId),
-        eq(dailyEntries.hijriMonth, prayer.hijriMonth),
-        eq(dailyEntries.hijriYear, prayer.hijriYear)
+        eq(dailyEntries.hijriMonth, hijriMonth),
+        eq(dailyEntries.hijriYear, hijriYear)
       )
     ),
-    getHijriMonthLength(prayer.hijriMonth, prayer.hijriYear),
+    getHijriMonthLength(hijriMonth, hijriYear),
   ]);
 
   const is29DayMonth = monthLength === 29;
@@ -440,9 +442,9 @@ export async function getMemberMonthDataAction(memberId: string, groupId: string
 
   return {
     days,
-    hijriMonth: prayer.hijriMonth,
-    hijriYear: prayer.hijriYear,
-    hijriMonthAr: prayer.hijriMonthAr,
+    hijriMonth,
+    hijriYear,
+    hijriMonthAr: hijriMonth === prayer.hijriMonth ? prayer.hijriMonthAr : undefined,
   };
 }
 
@@ -458,15 +460,15 @@ export async function adminToggleDayAction(
   const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
   if (!group[0]) return { success: false };
 
-  const prayer = await getTodayPrayerData(group[0].city, group[0].country);
+  const { hijriMonth, hijriYear } = await getResolvedContextForGroup(group[0]);
 
   const existing = await db.select().from(dailyEntries).where(
     and(
       eq(dailyEntries.memberId, memberId),
       eq(dailyEntries.khatmDay, khatmDay),
       eq(dailyEntries.startingJuz, startingJuz),
-      eq(dailyEntries.hijriMonth, prayer.hijriMonth),
-      eq(dailyEntries.hijriYear, prayer.hijriYear)
+      eq(dailyEntries.hijriMonth, hijriMonth),
+      eq(dailyEntries.hijriYear, hijriYear)
     )
   ).limit(1);
 
@@ -481,8 +483,8 @@ export async function adminToggleDayAction(
       memberId,
       khatmDay,
       startingJuz,
-      hijriMonth: prayer.hijriMonth,
-      hijriYear: prayer.hijriYear,
+      hijriMonth,
+      hijriYear,
       completed: true,
     });
     return { success: true, completed: true };

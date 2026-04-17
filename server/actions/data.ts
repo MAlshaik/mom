@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { members, groups, dailyEntries, memberJuz } from "@/server/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { getKhatmDay, getJuzForDay, isDoubleJuzDay, isPastTime, getResetTime } from "@/lib/khatm-day";
+import { getJuzForDay, isPastTime, getResetTime, resolveHijriContext } from "@/lib/khatm-day";
 import { getTodayPrayerData, prayerTimesMap, getHijriMonthLength } from "@/lib/prayer-times";
 import { getHijriStartDay } from "@/lib/hijri-start-cache";
 
@@ -46,6 +46,12 @@ export interface GroupPageData {
   is29DayMonth: boolean;
 }
 
+const HIJRI_MONTH_NAMES_AR: Record<string, string> = {
+  "1": "محرم", "2": "صفر", "3": "ربيع الأول", "4": "ربيع الثاني",
+  "5": "جمادى الأولى", "6": "جمادى الآخرة", "7": "رجب", "8": "شعبان",
+  "9": "رمضان", "10": "شوال", "11": "ذو القعدة", "12": "ذو الحجة",
+};
+
 const HIJRI_MONTH_NAMES_EN: Record<string, string> = {
   "1": "Muharram", "2": "Safar", "3": "Rabi al-Awwal", "4": "Rabi al-Thani",
   "5": "Jumada al-Ula", "6": "Jumada al-Thani", "7": "Rajab", "8": "Shaban",
@@ -74,12 +80,25 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
   const resetTimeStr = getResetTime(group.resetType, group.resetValue, prayers);
   const pastReset = isPastTime(resetTimeStr);
   const currentHijriDay = parseInt(prayer.hijriDay) || 1;
-  // khatmDay is always from the 1st of the Hijri month
-  const khatmDay = getKhatmDay(currentHijriDay, pastReset);
-  const hijriMonth = prayer.hijriMonth;
-  const hijriYear = prayer.hijriYear;
 
-  const [groupMembers, allJuzAssignments, todayEntries, myMonthEntries, monthLength] = await Promise.all([
+  // Resolve rollover: past Maghrib on last day of a month → advance to next month
+  const reportedMonthLength = await getHijriMonthLength(prayer.hijriMonth, prayer.hijriYear);
+  const resolved = resolveHijriContext(
+    currentHijriDay,
+    prayer.hijriMonth,
+    prayer.hijriYear,
+    reportedMonthLength,
+    pastReset
+  );
+  const khatmDay = resolved.khatmDay;
+  const hijriMonth = resolved.hijriMonth;
+  const hijriYear = resolved.hijriYear;
+  const monthLength =
+    hijriMonth === prayer.hijriMonth && hijriYear === prayer.hijriYear
+      ? reportedMonthLength
+      : await getHijriMonthLength(hijriMonth, hijriYear);
+
+  const [groupMembers, allJuzAssignments, todayEntries, myMonthEntries] = await Promise.all([
     db.select().from(members).where(eq(members.groupId, session.groupId)),
     db.select().from(memberJuz).where(eq(memberJuz.groupId, session.groupId)),
     db.select().from(dailyEntries).where(
@@ -88,7 +107,6 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
     db.select().from(dailyEntries).where(
       and(eq(dailyEntries.memberId, session.memberId), eq(dailyEntries.hijriMonth, hijriMonth), eq(dailyEntries.hijriYear, hijriYear))
     ),
-    getHijriMonthLength(hijriMonth, hijriYear),
   ]);
 
   const is29DayMonth = monthLength === 29;
@@ -196,10 +214,11 @@ export async function getGroupPageData(): Promise<GroupPageData | null> {
     slots,
     missedDays,
     hijriDate: {
-      day: prayer.hijriDay,
-      month: prayer.hijriMonthAr,
-      year: prayer.hijriYear,
-      monthEn: HIJRI_MONTH_NAMES_EN[prayer.hijriMonth] ?? prayer.hijriMonth,
+      // After rollover, show day 1 of the next month; otherwise show API's value
+      day: String(khatmDay + 1),
+      month: HIJRI_MONTH_NAMES_AR[hijriMonth] ?? prayer.hijriMonthAr,
+      year: hijriYear,
+      monthEn: HIJRI_MONTH_NAMES_EN[hijriMonth] ?? hijriMonth,
     },
     resetTime: resetTimeStr,
     resetLabel,

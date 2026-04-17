@@ -53,6 +53,48 @@ export function getKhatmDay(currentHijriDay: number, pastResetTime: boolean): nu
 }
 
 /**
+ * Resolve today's effective Hijri context, handling month rollover after reset time.
+ *
+ * When it's past Maghrib on the last day of a Hijri month, we're Islamically
+ * in the next day — which is day 1 of the next Hijri month. The API still
+ * reports the previous day's Hijri date (based on Gregorian), so we need to
+ * roll the month forward manually.
+ *
+ * Returns the khatmDay, hijriMonth, and hijriYear that should be used for
+ * all scheduling and DB operations.
+ */
+export function resolveHijriContext(
+  currentHijriDay: number,
+  hijriMonth: string,
+  hijriYear: string,
+  monthLength: number,
+  pastResetTime: boolean
+): { khatmDay: number; hijriMonth: string; hijriYear: string } {
+  const rawKhatmDay = getKhatmDay(currentHijriDay, pastResetTime);
+
+  // If khatmDay is still within the current month, no rollover needed
+  if (rawKhatmDay < monthLength) {
+    return { khatmDay: rawKhatmDay, hijriMonth, hijriYear };
+  }
+
+  // Rollover: advance to next Hijri month
+  const monthNum = parseInt(hijriMonth);
+  const yearNum = parseInt(hijriYear);
+  let nextMonth = monthNum + 1;
+  let nextYear = yearNum;
+  if (nextMonth > 12) {
+    nextMonth = 1;
+    nextYear = yearNum + 1;
+  }
+
+  return {
+    khatmDay: 0,
+    hijriMonth: String(nextMonth),
+    hijriYear: String(nextYear),
+  };
+}
+
+/**
  * Calculate which juz a member reads on a given khatm day.
  * On a 29-day month, when the result is 29, they also read 30.
  */

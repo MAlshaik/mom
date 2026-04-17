@@ -2,10 +2,10 @@
 
 import { db } from "@/server/db";
 import { dailyEntries, members, groups, memberJuz } from "@/server/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { requireSession, requireAdmin } from "@/lib/auth";
-import { getKhatmDay, isPastTime, getResetTime } from "@/lib/khatm-day";
-import { getTodayPrayerData, prayerTimesMap } from "@/lib/prayer-times";
+import { resolveHijriContext, isPastTime, getResetTime } from "@/lib/khatm-day";
+import { getTodayPrayerData, prayerTimesMap, getHijriMonthLength } from "@/lib/prayer-times";
 
 async function getGroupContext(groupId: string) {
   const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
@@ -17,13 +17,20 @@ async function getGroupContext(groupId: string) {
   const pastReset = isPastTime(resetTimeStr);
 
   const currentHijriDay = parseInt(prayer.hijriDay) || 1;
-  const khatmDay = getKhatmDay(currentHijriDay, pastReset);
+  const reportedMonthLength = await getHijriMonthLength(prayer.hijriMonth, prayer.hijriYear);
+  const resolved = resolveHijriContext(
+    currentHijriDay,
+    prayer.hijriMonth,
+    prayer.hijriYear,
+    reportedMonthLength,
+    pastReset
+  );
 
   return {
     group: group[0],
-    khatmDay,
-    hijriMonth: prayer.hijriMonth,
-    hijriYear: prayer.hijriYear,
+    khatmDay: resolved.khatmDay,
+    hijriMonth: resolved.hijriMonth,
+    hijriYear: resolved.hijriYear,
   };
 }
 
