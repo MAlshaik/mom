@@ -15,18 +15,6 @@ interface GoalEntriesAdminProps {
   onToggle: (entryId: string) => Promise<void>;
 }
 
-function formatDate(iso: string, locale: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-islamic-umalqura" : "en-US-u-ca-islamic-umalqura", {
-      day: "numeric",
-      month: "short",
-    });
-  } catch {
-    return iso;
-  }
-}
-
 export function GoalEntriesAdmin({ entries, onToggle }: GoalEntriesAdminProps) {
   const { locale } = useLocale();
 
@@ -50,9 +38,6 @@ export function GoalEntriesAdmin({ entries, onToggle }: GoalEntriesAdminProps) {
               <th className="text-start px-3 py-2.5 font-medium text-muted-foreground">
                 {locale === "ar" ? "الاسم" : "Name"}
               </th>
-              <th className="text-start px-3 py-2.5 font-medium text-muted-foreground">
-                {locale === "ar" ? "التاريخ" : "Date"}
-              </th>
               <th className="px-3 py-2.5 w-10" />
             </tr>
           </thead>
@@ -71,9 +56,6 @@ export function GoalEntriesAdmin({ entries, onToggle }: GoalEntriesAdminProps) {
                   <span className={entry.completed ? "text-blue-700 dark:text-blue-300" : ""}>
                     {entry.name}
                   </span>
-                </td>
-                <td className="px-3 py-2.5 text-muted-foreground text-xs">
-                  {formatDate(entry.claimedAt, locale)}
                 </td>
                 <td className="px-3 py-2.5 text-center">
                   {entry.completed && (

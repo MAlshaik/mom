@@ -1,0 +1,533 @@
+{
+  "id": "9540a09d-d81b-41c2-8a2f-2cbdae6ea29b",
+  "prevId": "7444bbb5-ecb9-4d60-b558-2cf11335f988",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.daily_entries": {
+      "name": "daily_entries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "khatm_day": {
+          "name": "khatm_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starting_juz": {
+          "name": "starting_juz",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hijri_month": {
+          "name": "hijri_month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "hijri_year": {
+          "name": "hijri_year",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "completed": {
+          "name": "completed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "marked_at": {
+          "name": "marked_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "daily_entries_member_id_members_id_fk": {
+          "name": "daily_entries_member_id_members_id_fk",
+          "tableFrom": "daily_entries",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "daily_entries_member_id_khatm_day_starting_juz_hijri_month_hijri_year_unique": {
+          "name": "daily_entries_member_id_khatm_day_starting_juz_hijri_month_hijri_year_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "member_id",
+            "khatm_day",
+            "starting_juz",
+            "hijri_month",
+            "hijri_year"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.goal_entries": {
+      "name": "goal_entries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "completed": {
+          "name": "completed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "goal_entries_group_id_groups_id_fk": {
+          "name": "goal_entries_group_id_groups_id_fk",
+          "tableFrom": "goal_entries",
+          "tableTo": "groups",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.groups": {
+      "name": "groups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'khatm'"
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Qatif'"
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Saudi Arabia'"
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reset_type": {
+          "name": "reset_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'prayer'"
+        },
+        "reset_value": {
+          "name": "reset_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Maghrib'"
+        },
+        "goal_description": {
+          "name": "goal_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_count": {
+          "name": "target_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "banner_url": {
+          "name": "banner_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "groups_slug_unique": {
+          "name": "groups_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.maghrib_cache": {
+      "name": "maghrib_cache",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "gregorian_date": {
+          "name": "gregorian_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "maghrib_time": {
+          "name": "maghrib_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fajr_time": {
+          "name": "fajr_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dhuhr_time": {
+          "name": "dhuhr_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "asr_time": {
+          "name": "asr_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "isha_time": {
+          "name": "isha_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hijri_day": {
+          "name": "hijri_day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hijri_month": {
+          "name": "hijri_month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hijri_year": {
+          "name": "hijri_year",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hijri_month_ar": {
+          "name": "hijri_month_ar",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "maghrib_cache_gregorian_date_unique": {
+          "name": "maghrib_cache_gregorian_date_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "gregorian_date"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.member_juz": {
+      "name": "member_juz",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starting_juz": {
+          "name": "starting_juz",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "member_juz_member_id_members_id_fk": {
+          "name": "member_juz_member_id_members_id_fk",
+          "tableFrom": "member_juz",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "member_juz_group_id_groups_id_fk": {
+          "name": "member_juz_group_id_groups_id_fk",
+          "tableFrom": "member_juz",
+          "tableTo": "groups",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "member_juz_group_id_starting_juz_unique": {
+          "name": "member_juz_group_id_starting_juz_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "group_id",
+            "starting_juz"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.members": {
+      "name": "members",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starting_juz": {
+          "name": "starting_juz",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_admin": {
+          "name": "is_admin",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "members_group_id_groups_id_fk": {
+          "name": "members_group_id_groups_id_fk",
+          "tableFrom": "members",
+          "tableTo": "groups",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "members_code_unique": {
+          "name": "members_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        },
+        "members_group_id_starting_juz_unique": {
+          "name": "members_group_id_starting_juz_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "group_id",
+            "starting_juz"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

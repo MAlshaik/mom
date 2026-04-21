@@ -12,7 +12,6 @@ export interface GoalPageData {
     goalDescription: string | null;
     targetCount: number | null;
     startDate: string;
-    endDate: string | null;
     bannerUrl: string | null;
   };
   entries: {
@@ -43,7 +42,6 @@ export async function getGoalPageData(groupId: string): Promise<GoalPageData | n
       goalDescription: group[0].goalDescription,
       targetCount: group[0].targetCount,
       startDate: group[0].startDate,
-      endDate: group[0].endDate,
       bannerUrl: group[0].bannerUrl,
     },
     entries: entries.map((e) => ({

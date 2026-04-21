@@ -21,7 +21,6 @@ export const groups = pgTable("groups", {
   resetValue: text("reset_value").notNull().default("Maghrib"), // prayer name or "HH:MM"
   goalDescription: text("goal_description"),
   targetCount: integer("target_count"),
-  endDate: date("end_date"),
   bannerUrl: text("banner_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -59,7 +59,6 @@ export async function createGroupAction(data: {
   resetValue?: string;
   goalDescription?: string;
   targetCount?: number;
-  endDate?: string;
 }) {
   const slug = generateSlug(data.name);
 
@@ -76,7 +75,6 @@ export async function createGroupAction(data: {
       resetValue: data.resetValue ?? "Maghrib",
       goalDescription: data.goalDescription,
       targetCount: data.targetCount,
-      endDate: data.endDate,
     })
     .returning();
 
@@ -95,7 +93,6 @@ export async function updateGroupAction(
     resetValue?: string;
     goalDescription?: string;
     targetCount?: number;
-    endDate?: string;
   }
 ) {
   if (data.slug) {
@@ -117,7 +114,6 @@ export async function updateGroupAction(
   if (data.resetValue !== undefined) updateData.resetValue = data.resetValue;
   if (data.goalDescription !== undefined) updateData.goalDescription = data.goalDescription;
   if (data.targetCount !== undefined) updateData.targetCount = data.targetCount;
-  if (data.endDate !== undefined) updateData.endDate = data.endDate;
 
   const [updated] = await db
     .update(groups)

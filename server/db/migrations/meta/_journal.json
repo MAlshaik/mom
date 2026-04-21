@@ -29,6 +29,13 @@
       "when": 1774694185125,
       "tag": "0003_per-juz-entries",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776798017960,
+      "tag": "0004_drop-end-date",
+      "breakpoints": true
     }
   ]
 }

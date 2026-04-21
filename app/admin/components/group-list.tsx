@@ -61,7 +61,6 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
   const [hijriDate, setHijriDate] = useState("1447-10-01");
   // Goal fields
   const [goalDesc, setGoalDesc] = useState("");
-  const [endDate, setEndDate] = useState("");
 
   const loadGroups = async () => {
     const data = await listGroupsAction();
@@ -77,14 +76,17 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
     if (!formName.trim()) return;
     setSaving(true);
 
-    const gregorianDate = await hijriToGregorian(hijriDate);
+    // Goal groups don't need dates — default to today
+    const gregorianDate =
+      groupType === "goal"
+        ? new Date().toISOString().split("T")[0]
+        : await hijriToGregorian(hijriDate);
 
     await createGroupAction({
       name: formName.trim(),
       startDate: gregorianDate,
       type: groupType,
       goalDescription: groupType === "goal" ? goalDesc : undefined,
-      endDate: groupType === "goal" && endDate ? await hijriToGregorian(endDate) : undefined,
     });
 
     setDialogOpen(false);
@@ -151,34 +153,26 @@ export function GroupList({ onSelectGroup }: GroupListProps) {
               </div>
 
               {groupType === "goal" && (
-                <>
-                  <div className="space-y-2">
-                    <Label>{locale === "ar" ? "الوصف" : "Description"}</Label>
-                    <Input
-                      value={goalDesc}
-                      onChange={(e) => setGoalDesc(e.target.value)}
-                      placeholder={locale === "ar" ? "قراءة سورة يس مرة واحدة" : "Read Surah Yasin once"}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{locale === "ar" ? "تاريخ الانتهاء (اختياري)" : "End Date (optional)"}</Label>
-                    <HijriDatePicker
-                      value={endDate}
-                      onChange={(v) => setEndDate(v)}
-                      locale={locale}
-                    />
-                  </div>
-                </>
+                <div className="space-y-2">
+                  <Label>{locale === "ar" ? "الوصف" : "Description"}</Label>
+                  <Input
+                    value={goalDesc}
+                    onChange={(e) => setGoalDesc(e.target.value)}
+                    placeholder={locale === "ar" ? "قراءة سورة يس مرة واحدة" : "Read Surah Yasin once"}
+                  />
+                </div>
               )}
 
-              <div className="space-y-2">
-                <Label>{locale === "ar" ? "تاريخ البداية (هجري)" : "Start Date (Hijri)"}</Label>
-                <HijriDatePicker
-                  value={hijriDate}
-                  onChange={(v) => setHijriDate(v)}
-                  locale={locale}
-                />
-              </div>
+              {groupType === "khatm" && (
+                <div className="space-y-2">
+                  <Label>{locale === "ar" ? "تاريخ البداية (هجري)" : "Start Date (Hijri)"}</Label>
+                  <HijriDatePicker
+                    value={hijriDate}
+                    onChange={(v) => setHijriDate(v)}
+                    locale={locale}
+                  />
+                </div>
+              )}
 
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" onClick={() => setDialogOpen(false)} className="cursor-pointer">

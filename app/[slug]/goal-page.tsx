@@ -5,6 +5,12 @@ import { useLocale } from "@/lib/locale-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   getGoalPageData,
   claimGoalSlotAction,
   toggleGoalCompletionAction,
@@ -18,19 +24,6 @@ interface GoalPageProps {
   groupId: string;
 }
 
-function formatDate(iso: string, locale: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-islamic-umalqura" : "en-US-u-ca-islamic-umalqura", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
-
 export function GoalPage({ groupId }: GoalPageProps) {
   const { locale } = useLocale();
   const [data, setData] = useState<GoalPageData | null>(null);
@@ -38,6 +31,7 @@ export function GoalPage({ groupId }: GoalPageProps) {
   const [claimName, setClaimName] = useState("");
   const [claiming, setClaiming] = useState(false);
   const [showInput, setShowInput] = useState(false);
+  const [confirmUncheck, setConfirmUncheck] = useState<{ id: string; name: string } | null>(null);
 
   const loadData = useCallback(async () => {
     const result = await getGoalPageData(groupId);
@@ -56,14 +50,12 @@ export function GoalPage({ groupId }: GoalPageProps) {
         <div className="max-w-md mx-auto px-4 pb-4 space-y-4 animate-pulse">
           <div className="h-6 w-48 bg-muted rounded-md" />
           <div className="h-4 w-64 bg-muted rounded-md" />
-          <div className="h-3 w-40 bg-muted rounded-md" />
           <div className="h-12 w-full bg-muted rounded-lg" />
           <div className="h-4 w-32 bg-muted rounded-md" />
           <div className="rounded-xl overflow-hidden ring-1 ring-foreground/10">
             {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="flex justify-between px-3 py-3 border-b border-foreground/5">
+              <div key={i} className="px-3 py-3 border-b border-foreground/5">
                 <div className="h-4 w-28 bg-muted rounded-md" />
-                <div className="h-4 w-16 bg-muted rounded-md" />
               </div>
             ))}
           </div>
@@ -85,7 +77,7 @@ export function GoalPage({ groupId }: GoalPageProps) {
     setClaiming(false);
   };
 
-  const handleToggle = async (entryId: string, wasCompleted: boolean) => {
+  const performToggle = async (entryId: string, wasCompleted: boolean) => {
     setData((prev) =>
       prev
         ? {
@@ -103,9 +95,21 @@ export function GoalPage({ groupId }: GoalPageProps) {
     if (!result.success) loadData();
   };
 
-  // Check if past end date
-  const now = new Date();
-  const isPastEnd = data.group.endDate ? new Date(data.group.endDate) < now : false;
+  const handleRowClick = (entry: { id: string; name: string; completed: boolean }) => {
+    // Marking as done: do it immediately
+    if (!entry.completed) {
+      performToggle(entry.id, false);
+      return;
+    }
+    // Un-checking: show confirmation first
+    setConfirmUncheck({ id: entry.id, name: entry.name });
+  };
+
+  const confirmUncheckYes = () => {
+    if (!confirmUncheck) return;
+    performToggle(confirmUncheck.id, true);
+    setConfirmUncheck(null);
+  };
 
   return (
     <>
@@ -126,64 +130,45 @@ export function GoalPage({ groupId }: GoalPageProps) {
         {data.group.goalDescription && (
           <p className="text-muted-foreground text-sm">{data.group.goalDescription}</p>
         )}
-        <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
-          {data.group.startDate && (
-            <span>{locale === "ar" ? "البداية" : "Start"}: {formatDate(data.group.startDate, locale)}</span>
-          )}
-          {data.group.endDate && (
-            <>
-              <span className="text-border">|</span>
-              <span>{locale === "ar" ? "النهاية" : "End"}: {formatDate(data.group.endDate, locale)}</span>
-            </>
-          )}
-        </div>
       </div>
 
-      {/* Register button — above the table */}
-      {!isPastEnd && (
-        <div>
-          {showInput ? (
-            <div className="flex gap-2">
-              <Input
-                value={claimName}
-                onChange={(e) => setClaimName(e.target.value)}
-                placeholder={locale === "ar" ? "أدخلي اسمك..." : "Enter your name..."}
-                autoFocus
-                className="flex-1"
-                onKeyDown={(e) => e.key === "Enter" && handleClaim()}
-              />
-              <Button
-                onClick={handleClaim}
-                disabled={claiming}
-                className="bg-[#1B3A6B] text-white hover:bg-[#152E55] dark:bg-[#1E4080] dark:hover:bg-[#16326A] cursor-pointer"
-              >
-                {claiming ? "..." : locale === "ar" ? "تسجيل" : "Register"}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => { setShowInput(false); setClaimName(""); }}
-                className="cursor-pointer"
-              >
-                {locale === "ar" ? "إلغاء" : "Cancel"}
-              </Button>
-            </div>
-          ) : (
+      {/* Register button */}
+      <div>
+        {showInput ? (
+          <div className="flex gap-2">
+            <Input
+              value={claimName}
+              onChange={(e) => setClaimName(e.target.value)}
+              placeholder={locale === "ar" ? "أدخلي اسمك..." : "Enter your name..."}
+              autoFocus
+              className="flex-1"
+              onKeyDown={(e) => e.key === "Enter" && handleClaim()}
+            />
             <Button
-              onClick={() => setShowInput(true)}
-              className="w-full py-5 text-base bg-[#1B3A6B] text-white hover:bg-[#152E55] dark:bg-[#1E4080] dark:hover:bg-[#16326A] cursor-pointer gap-2"
+              onClick={handleClaim}
+              disabled={claiming}
+              className="bg-[#1B3A6B] text-white hover:bg-[#152E55] dark:bg-[#1E4080] dark:hover:bg-[#16326A] cursor-pointer"
             >
-              <Plus className="h-5 w-5" />
-              {locale === "ar" ? "سجّلي اسمك" : "Add your name"}
+              {claiming ? "..." : locale === "ar" ? "تسجيل" : "Register"}
             </Button>
-          )}
-        </div>
-      )}
-
-      {isPastEnd && (
-        <p className="text-center text-sm text-muted-foreground">
-          {locale === "ar" ? "انتهت فترة التسجيل" : "Registration has ended"}
-        </p>
-      )}
+            <Button
+              variant="secondary"
+              onClick={() => { setShowInput(false); setClaimName(""); }}
+              className="cursor-pointer"
+            >
+              {locale === "ar" ? "إلغاء" : "Cancel"}
+            </Button>
+          </div>
+        ) : (
+          <Button
+            onClick={() => setShowInput(true)}
+            className="w-full py-5 text-base bg-[#1B3A6B] text-white hover:bg-[#152E55] dark:bg-[#1E4080] dark:hover:bg-[#16326A] cursor-pointer gap-2"
+          >
+            <Plus className="h-5 w-5" />
+            {locale === "ar" ? "سجّلي اسمك" : "Add your name"}
+          </Button>
+        )}
+      </div>
 
       {/* Count */}
       <div className="text-sm text-muted-foreground">
@@ -199,9 +184,6 @@ export function GoalPage({ groupId }: GoalPageProps) {
                 <th className="text-start px-3 py-2.5 font-medium text-muted-foreground">
                   {locale === "ar" ? "الاسم" : "Name"}
                 </th>
-                <th className="text-start px-3 py-2.5 font-medium text-muted-foreground">
-                  {locale === "ar" ? "التاريخ" : "Date"}
-                </th>
               </tr>
             </thead>
             <tbody>
@@ -213,7 +195,7 @@ export function GoalPage({ groupId }: GoalPageProps) {
                     ${entry.completed ? "bg-blue-50 dark:bg-blue-950/20" : "bg-card hover:bg-muted/30"}
                     ${i < data.entries.length - 1 ? "border-b border-foreground/5" : ""}
                   `}
-                  onClick={() => handleToggle(entry.id, entry.completed)}
+                  onClick={() => handleRowClick(entry)}
                 >
                   <td className="px-3 py-2.5 flex items-center gap-2">
                     {entry.completed && (
@@ -223,9 +205,6 @@ export function GoalPage({ groupId }: GoalPageProps) {
                       {entry.name}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-muted-foreground text-xs">
-                    {formatDate(entry.claimedAt, locale)}
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -233,6 +212,40 @@ export function GoalPage({ groupId }: GoalPageProps) {
         </div>
       )}
     </div>
+
+    {/* Confirm un-check dialog */}
+    <Dialog open={confirmUncheck !== null} onOpenChange={(open) => !open && setConfirmUncheck(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {locale === "ar" ? "تأكيد الإلغاء" : "Confirm"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <p className="text-sm text-muted-foreground">
+            {locale === "ar"
+              ? `هل تريدين إلغاء إنجاز "${confirmUncheck?.name}"؟`
+              : `Mark "${confirmUncheck?.name}" as not done?`}
+          </p>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmUncheck(null)}
+              className="cursor-pointer"
+            >
+              {locale === "ar" ? "إلغاء" : "Cancel"}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmUncheckYes}
+              className="cursor-pointer"
+            >
+              {locale === "ar" ? "تأكيد" : "Confirm"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
